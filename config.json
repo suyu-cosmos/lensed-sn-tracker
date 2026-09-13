@@ -1,0 +1,6 @@
+{
+  "dataRepo": { "owner": "suyu-cosmos", "name": "lensed-sn-data" },
+  "codeRepo": { "owner": "suyu-cosmos", "name": "lensed-sn-tracker" },
+  "auth": { "mode": "pat" },
+  "defaultTimeDisplay": "UT"
+}
