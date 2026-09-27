@@ -26,8 +26,15 @@ export function parseIssueBody(body) {
   return { data, notes };
 }
 
-/** Render a JS object back into the fenced yaml block issue-body format. */
-export function stringifyIssueBody(data, notes = '') {
-  const block = '```yaml\n' + yaml.dump(data, { lineWidth: 100 }) + '```';
+/**
+ * Render a JS object back into the fenced yaml block issue-body format.
+ * `headerComment`, if given, becomes a leading `# <headerComment>` line
+ * matching the hand-authored issue templates (`# candidate`, `# trigger`,
+ * …) — purely documentation for anyone reading the raw issue on GitHub;
+ * parseIssueBody ignores it either way.
+ */
+export function stringifyIssueBody(data, notes = '', headerComment = null) {
+  const header = headerComment ? `# ${headerComment}\n` : '';
+  const block = '```yaml\n' + header + yaml.dump(data, { lineWidth: 100 }) + '```';
   return notes ? `${block}\n\n${notes}` : block;
 }

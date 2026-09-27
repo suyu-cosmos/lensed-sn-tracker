@@ -8,6 +8,7 @@ import * as dashboard from './pages/dashboard.js';
 import * as candidatePage from './pages/candidate.js';
 import * as resources from './pages/resources.js';
 import * as people from './pages/people.js';
+import * as newCandidate from './pages/new-candidate.js';
 
 const appEl = document.getElementById('app');
 
@@ -15,7 +16,7 @@ function renderLogin(onSubmit, errorMessage) {
   appEl.innerHTML = `
     <div class="login-box">
       <h1>Lensed SN Tracker</h1>
-      <p class="muted">Paste a GitHub personal access token with read access to the data repo (fine-grained: Issues + Contents, read-only).</p>
+      <p class="muted">Paste a GitHub personal access token scoped to the data repo (fine-grained: Contents read-only, Issues read &amp; write — writes are needed for the new-candidate/add-task/change-status forms).</p>
       <input id="pat-input" type="password" placeholder="github_pat_..." autocomplete="off" />
       <button id="pat-submit">Continue</button>
       ${errorMessage ? `<p class="error">${errorMessage}</p>` : ''}
@@ -38,6 +39,7 @@ function updateNav(nav) {
     <a href="#/" class="${path === '/' ? 'active' : ''}">Dashboard</a>
     <a href="#/resources" class="${path.startsWith('/resources') ? 'active' : ''}">Resources</a>
     <a href="#/people" class="${path.startsWith('/people') ? 'active' : ''}">People</a>
+    <a href="#/new-candidate" class="${path.startsWith('/new-candidate') ? 'active' : ''}">+ New candidate</a>
     <span class="spacer"></span>
     <button class="linklike" id="sign-out">Sign out</button>
   `;
@@ -95,6 +97,10 @@ async function boot() {
   route('/candidate/:id', (params) => {
     updateNav(nav);
     candidatePage.render(content, ctx, params);
+  });
+  route('/new-candidate', () => {
+    updateNav(nav);
+    newCandidate.render(content, ctx);
   });
 
   start();

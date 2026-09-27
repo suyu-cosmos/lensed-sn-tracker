@@ -53,6 +53,44 @@ export async function listCandidateSubIssues(client, { owner, name }, candidateI
   return issues.filter((issue) => !issue.labels.some((l) => labelName(l) === 'type:candidate'));
 }
 
+/**
+ * Create a new issue. Any label name that doesn't already exist in the repo
+ * is created automatically by GitHub with a default color (confirmed
+ * against the live API — unlike issue-form `labels:` defaults, which can
+ * only apply labels that already exist).
+ */
+export async function createIssue(client, { owner, name }, { title, body, labels = [], assignees = [] }) {
+  // Assignees who aren't valid collaborators are silently dropped by the
+  // API rather than causing an error, so an invalid `leads:`/facility
+  // contact entry doesn't block issue creation.
+  const response = await client.rest.issues.create({ owner, repo: name, title, body, labels, assignees });
+  return response.data;
+}
+
+/** Fetch one issue fresh — used right before an edit to shrink the race window with a concurrent edit made elsewhere (e.g. directly on GitHub). */
+export async function getIssue(client, { owner, name }, issueNumber) {
+  const response = await client.rest.issues.get({ owner, repo: name, issue_number: issueNumber });
+  return response.data;
+}
+
+/** Replace an issue's body (e.g. after mutating its parsed YAML block). */
+export async function updateIssueBody(client, { owner, name }, issueNumber, body) {
+  await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, body });
+}
+
+/** Add one or more labels to an issue; any name that doesn't exist yet is created automatically. */
+export async function addLabels(client, { owner, name }, issueNumber, labels) {
+  if (!labels.length) return;
+  await client.rest.issues.addLabels({ owner, repo: name, issue_number: issueNumber, labels });
+}
+
+/** Remove one label from an issue; a no-op if it isn't currently applied. */
+export async function removeLabel(client, { owner, name }, issueNumber, label) {
+  await client.rest.issues.removeLabel({ owner, repo: name, issue_number: issueNumber, name: label }).catch((err) => {
+    if (err.status !== 404) throw err;
+  });
+}
+
 /** List threaded comments on any issue (parent or sub-issue). */
 export async function listComments(client, { owner, name }, issueNumber) {
   return client.paginate(client.rest.issues.listComments, {

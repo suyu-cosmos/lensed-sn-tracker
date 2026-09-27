@@ -4,25 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A static, no-server web app (Vite + vanilla JS) that is a read-only dashboard
-and visibility calculator for a small group following up gravitationally
-lensed supernovae. There is no backend: all structured data (facilities,
-people, rules/workflow) and all per-candidate work items live as YAML and
-GitHub issues in the sibling private repo `lensed-sn-data` (checked out
-alongside this one, e.g. `../lensed-sn-data`). This repo only reads that
-repo via the GitHub API (Octokit) using a personal access token pasted by
-the user and kept in `localStorage`.
+A static, no-server web app (Vite + vanilla JS) that is a dashboard,
+visibility calculator, and now (Milestone 2) a write front-end for a small
+group following up gravitationally lensed supernovae. There is no backend:
+all structured data (facilities, people, rules/workflow) and all
+per-candidate work items live as YAML and GitHub issues in the sibling
+private repo `lensed-sn-data` (checked out alongside this one, e.g.
+`../lensed-sn-data`). This repo talks to that repo entirely via the GitHub
+API (Octokit) using a personal access token pasted by the user and kept in
+`localStorage` — a fine-grained PAT with Contents: read-only and Issues:
+**read & write** (bumped from read-only once Milestone 2 added writes).
 
 The full design spec (data model, issue conventions, milestones) is
 `lensed-sn-tracker-plan_v2.md` at the repo root — read it before making
-structural changes; this is currently a **Milestone 1** build (read-only).
+structural changes. **Milestone 1** (read-only dashboard) and the write
+half of **Milestone 2** (new-candidate/add-task/trigger/change-status) are
+built; GitHub OAuth via a Cloudflare Worker (the rest of Milestone 2) was
+deliberately deferred — see "Auth" below.
 
 ## Commands
 
 ```sh
 npm install
 npm run dev       # Vite dev server, http://localhost:5173
-npm test          # vitest run — currently just test/visibility.test.js
+npm test          # vitest run — visibility.test.js, write.test.js
 npm run build     # -> dist/, what .github/workflows/deploy.yml deploys
 npm run preview   # serve the production build locally
 ```
@@ -99,9 +104,35 @@ that YAML failed to parse, a `issue-<number>` fallback route id — see
 (kept in sync manually; there's no shared route-id helper yet).
 
 **Auth is deliberately swappable.** `src/lib/auth.js` is the only place that
-knows the token lives in `localStorage`; Milestone 2 replaces this with
-GitHub OAuth via a Cloudflare Worker without touching `src/lib/github.js` or
-any page.
+knows the token lives in `localStorage`; a future GitHub OAuth swap (via a
+Cloudflare Worker, per the plan) replaces this without touching
+`src/lib/github.js` or any page — that's *why* it's still a pasted PAT
+today rather than OAuth: the write features were higher-value to build
+first and don't depend on which auth flow hands the app its token.
+
+**Writes go through `src/lib/write.js`, never straight from a page.** It
+owns every title/label/body-shape convention from plan §5.1/§5.2 in one
+place (`buildCandidateIssue`, `buildTaskIssue`, `changeCandidateStatus`,
+`buildTriggerMailto`), on top of the raw REST calls in `src/lib/github.js`
+(`createIssue`, `getIssue`, `updateIssueBody`, `addLabels`, `removeLabel`).
+Two things worth knowing before touching this:
+- **Labels auto-create on write**, confirmed against the live API — both
+  `issues.create`'s `labels` array and `issues.addLabels` create a label
+  that doesn't exist yet (default gray). This is *different* from GitHub's
+  issue-form `labels:` defaults (which only apply pre-existing labels,
+  the reason `lensed-sn-data`'s `label-candidate.yml` Action exists at
+  all) — don't assume that restriction applies here too.
+- **`changeCandidateStatus` re-fetches the issue immediately before
+  writing** (`getIssue` right before mutating), to shrink — not eliminate —
+  the race window with an edit made directly on GitHub between page load
+  and clicking "Update status". There's no real optimistic-concurrency
+  check (no ETag/If-Match); a true conflict just means last-write-wins.
+- Any page that calls a write must also fix up `ctx` afterward:
+  `refreshCandidates(ctx)` (`src/lib/data.js`) re-fetches and replaces
+  `ctx.candidates`' contents in place after a candidate is created or a
+  status changes — `ctx.candidates` is otherwise a snapshot from boot and
+  won't reflect the write on its own. Adding a task doesn't need this,
+  since `loadCandidateDetail` always re-fetches sub-issues fresh.
 
 ## Config
 
