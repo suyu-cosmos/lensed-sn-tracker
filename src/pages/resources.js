@@ -7,10 +7,13 @@ import { findPerson } from '../lib/rules.js';
 import { makeSortable } from '../lib/sortable.js';
 
 function rowsFor(facility, people) {
-  const contactName = findPerson(people, facility.contact?.group_holder)?.name ?? facility.contact?.group_holder ?? '—';
   const instruments = facility.instruments?.length ? facility.instruments : [{ name: '—', modes: [] }];
-  return instruments.map(
-    (instrument) => `
+  return instruments.map((instrument) => {
+    // An instrument's own group_holder overrides the facility-level
+    // contact.group_holder for that instrument only (facilities.yaml).
+    const holderId = instrument.group_holder ?? facility.contact?.group_holder;
+    const contactName = findPerson(people, holderId)?.name ?? holderId ?? '—';
+    return `
       <tr>
         <td>${escapeHtml(facility.name)}</td>
         <td>${escapeHtml(instrument.name)}</td>
@@ -20,8 +23,8 @@ function rowsFor(facility, people) {
         <td>${escapeHtml(facility.access?.type ?? '—')}</td>
         <td>${escapeHtml(contactName)}</td>
         <td>${escapeHtml(facility.access?.semester_end ?? '—')}</td>
-      </tr>`,
-  );
+      </tr>`;
+  });
 }
 
 export function render(container, ctx) {
