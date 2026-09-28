@@ -44,7 +44,7 @@ export function render(container, ctx) {
       <label>SN type <select name="snType">${optionEls(SN_TYPES, SN_TYPES, 'unknown')}</select></label>
 
       <h3>Ownership</h3>
-      <label>Leads (GitHub usernames) * <input name="leads" required placeholder="suyu-cosmos, mkim" /></label>
+      <label>Leads (GitHub usernames) * <input name="leads" required placeholder="shsuyu, stefanschuldt" /></label>
       <label>Status
         <select name="status">${statuses.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultStatus ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
       </label>
