@@ -13,11 +13,15 @@ function rowsFor(facility, people) {
     // contact.group_holder for that instrument only (facilities.yaml).
     const holderId = instrument.group_holder ?? facility.contact?.group_holder;
     const contactName = findPerson(people, holderId)?.name ?? holderId ?? '—';
-    // semester_start is optional (facilities.yaml) — show a range only
-    // when the program has a defined start, else just the end date.
-    const semester = facility.access?.semester_start
-      ? `${facility.access.semester_start} – ${facility.access?.semester_end ?? '—'}`
-      : (facility.access?.semester_end ?? '—');
+    // An instrument's own semester_start/semester_end override the
+    // facility-level access.semester_start/semester_end for that
+    // instrument only (facilities.yaml) — e.g. vlt's SOXS has a different
+    // access window than MUSE/FORS2. Show a range only when a start is
+    // defined, else just the end date (which may itself be free text like
+    // "2028-04-30 (TBC)" rather than a strict date).
+    const semesterStart = instrument.semester_start ?? facility.access?.semester_start;
+    const semesterEnd = instrument.semester_end ?? facility.access?.semester_end;
+    const accessEndDate = semesterStart ? `${semesterStart} – ${semesterEnd ?? '—'}` : (semesterEnd ?? '—');
     return `
       <tr>
         <td>${escapeHtml(facility.name)}</td>
@@ -27,7 +31,7 @@ function rowsFor(facility, people) {
         <td>${facility.aperture_m ?? '—'}</td>
         <td>${escapeHtml(facility.access?.type ?? '—')}</td>
         <td>${escapeHtml(contactName)}</td>
-        <td>${escapeHtml(semester)}</td>
+        <td>${escapeHtml(accessEndDate)}</td>
       </tr>`;
   });
 }
@@ -48,7 +52,7 @@ export function render(container, ctx) {
           <th data-sort="number">Aperture (m)</th>
           <th data-sort>Access</th>
           <th data-sort>Group holder</th>
-          <th data-sort>Semester</th>
+          <th data-sort>Access end date</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8" class="muted">No facilities defined.</td></tr>'}</tbody>
