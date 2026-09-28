@@ -37,7 +37,7 @@ GitHub issues there. See `lensed-sn-tracker-plan_v2.md` for the full design.
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # vitest — visibility engine + write payload builders
+npm test          # vitest — visibility engine + write payload builders + yaml date-parsing
 npm run build     # -> dist/, deployed by .github/workflows/deploy.yml
 ```
 

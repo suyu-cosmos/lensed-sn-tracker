@@ -13,6 +13,11 @@ function rowsFor(facility, people) {
     // contact.group_holder for that instrument only (facilities.yaml).
     const holderId = instrument.group_holder ?? facility.contact?.group_holder;
     const contactName = findPerson(people, holderId)?.name ?? holderId ?? '—';
+    // semester_start is optional (facilities.yaml) — show a range only
+    // when the program has a defined start, else just the end date.
+    const semester = facility.access?.semester_start
+      ? `${facility.access.semester_start} – ${facility.access?.semester_end ?? '—'}`
+      : (facility.access?.semester_end ?? '—');
     return `
       <tr>
         <td>${escapeHtml(facility.name)}</td>
@@ -22,7 +27,7 @@ function rowsFor(facility, people) {
         <td>${facility.aperture_m ?? '—'}</td>
         <td>${escapeHtml(facility.access?.type ?? '—')}</td>
         <td>${escapeHtml(contactName)}</td>
-        <td>${escapeHtml(facility.access?.semester_end ?? '—')}</td>
+        <td>${escapeHtml(semester)}</td>
       </tr>`;
   });
 }
@@ -43,7 +48,7 @@ export function render(container, ctx) {
           <th data-sort="number">Aperture (m)</th>
           <th data-sort>Access</th>
           <th data-sort>Group holder</th>
-          <th data-sort>Semester end</th>
+          <th data-sort>Semester</th>
         </tr>
       </thead>
       <tbody>${rows || '<tr><td colspan="8" class="muted">No facilities defined.</td></tr>'}</tbody>

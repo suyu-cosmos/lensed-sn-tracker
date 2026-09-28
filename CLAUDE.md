@@ -58,6 +58,18 @@ renders that field wrapped in a ` ```yaml ` fence automatically, so an issue
 filed through the GitHub UI and a candidate/task written by this app end up
 byte-for-byte the same shape.
 
+**Every YAML load goes through `JSON_SCHEMA`, never js-yaml's default.**
+js-yaml's default schema auto-converts any bare `YYYY-MM-DD` (or full
+ISO-8601 datetime) scalar into a native JS `Date`, in whichever timezone
+the parsing machine happens to be in — which then stringifies as a
+verbose, locale-dependent string wherever it's displayed via a template
+literal instead of `formatUtc()`. `parseYamlFile`/`parseIssueBody`
+(`src/lib/yaml.js`) both pass `{ schema: yaml.JSON_SCHEMA }` to `yaml.load`
+specifically to keep every date/datetime field a plain string; don't call
+`yaml.load` anywhere else without it. `yaml.dump` needs no matching
+change — its default schema already quotes date-like strings on write, so
+this is purely a load-side fix (for hand-typed unquoted dates on GitHub).
+
 **Sub-issues are associated to a candidate by label, not by GitHub's native
 sub-issue links.** A candidate's tasks are every issue in the data repo
 carrying that candidate's `cand:<id>` label (minus `type:candidate` itself)
