@@ -54,6 +54,11 @@ function renderVisibility(candidateData, facilities, rules) {
   }
   return facilities
     .map((facility) => {
+      if (facility.space_based) {
+        return `
+          <h3>${escapeHtml(facility.name)}</h3>
+          <p class="muted">Space-based facility — no ground site, so nightly altitude/airmass visibility doesn't apply. Scheduling follows its own sun-avoidance/roll constraints instead.</p>`;
+      }
       const nights = upcomingVisibility({
         raDeg: candidateData.ra_deg,
         decDeg: candidateData.dec_deg,
@@ -363,7 +368,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
       if (type === 'trigger') {
         const facility = facilityById(facilities, fields.facility);
         const instrument = facility?.instruments?.find((i) => i.id === fields.instrument);
-        const visibilityTonight = facility
+        const visibilityTonight = facility && !facility.space_based
           ? nightlyVisibility({
               raDeg: candidate.data.ra_deg,
               decDeg: candidate.data.dec_deg,

@@ -136,9 +136,11 @@ export function buildTriggerMailto({ candidate, facility, instrument, visibility
   const to = facility.contact?.email ?? '';
   const subject = `ToO request: ${candidate.tns_name || candidate.id} — ${facility.name}/${instrument.name}`;
   const finderChartUrl = `https://aladin.cds.unistra.fr/AladinLite/?target=${candidate.ra_deg}%20${candidate.dec_deg}&fov=0.3&survey=P%2FDSS2%2Fcolor`;
-  const windowLine = visibilityTonight?.visible
-    ? `Visible tonight ${formatUtc(visibilityTonight.windowStart)} – ${formatUtc(visibilityTonight.windowEnd)}, best altitude ${visibilityTonight.bestAltitudeDeg.toFixed(0)}°, airmass ${visibilityTonight.bestAirmass.toFixed(2)}.`
-    : 'Not visible tonight from this facility — check the tracker for the next visible night.';
+  const windowLine = facility.space_based
+    ? "Space-based facility — schedule via its own ToO/DDT activation process, not nightly ground visibility."
+    : visibilityTonight?.visible
+      ? `Visible tonight ${formatUtc(visibilityTonight.windowStart)} – ${formatUtc(visibilityTonight.windowEnd)}, best altitude ${visibilityTonight.bestAltitudeDeg.toFixed(0)}°, airmass ${visibilityTonight.bestAirmass.toFixed(2)}.`
+      : 'Not visible tonight from this facility — check the tracker for the next visible night.';
 
   const body = [
     `Candidate: ${candidate.tns_name || candidate.id} (${candidate.id})`,

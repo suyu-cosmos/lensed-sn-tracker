@@ -94,6 +94,17 @@ near local solar noon via longitude, at `sampleMinutes` resolution — there's
 no rise/set search. Airmass uses the plain secant approximation, which only
 means anything above the altitude/airmass cutoff already being enforced.
 
+A facility can be `space_based: true` (e.g. JWST) — it has no geographic
+`site`, so ground altitude/airmass is meaningless for it. Every call site
+that loops over facilities and might reach `nightlyVisibility`/
+`upcomingVisibility` must skip such facilities instead of passing their
+(absent) site through: `visibilityTonightAcrossFacilities` filters them out
+of both the count and the denominator, `candidate.js`'s visibility panel
+renders a text note instead of a night grid for them, and `buildTriggerMailto`
+(`write.js`) gives them their own status line rather than "not visible
+tonight". If you add another code path that iterates `facilities`, check
+`facility.space_based` before touching `facility.site`.
+
 **Routing is a ~40-line hand-rolled hash router** (`src/router.js`): register
 `route('/pattern/:id', handler)`, then `start()`. Each page module exports a
 single `render(container, ctx[, params])` and owns its own DOM (built via

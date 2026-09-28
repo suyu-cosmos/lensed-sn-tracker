@@ -178,10 +178,14 @@ export function upcomingVisibility({ raDeg, decDeg, site, minAltitudeDeg, maxAir
 
 /**
  * Tonight's visibility across every facility, for the dashboard's
- * "visible tonight: N of M" cell.
+ * "visible tonight: N of M" cell. Facilities flagged `space_based: true`
+ * (e.g. JWST) have no geographic site to compute a ground altitude/airmass
+ * from, so they're excluded from both the count and the denominator here
+ * rather than fed into `nightlyVisibility`, which assumes a real site.
  */
 export function visibilityTonightAcrossFacilities(candidate, facilities, rules) {
-  const results = facilities.map((facility) => ({
+  const groundFacilities = facilities.filter((f) => !f.space_based);
+  const results = groundFacilities.map((facility) => ({
     facility,
     result: nightlyVisibility({
       raDeg: candidate.ra_deg,
@@ -194,5 +198,5 @@ export function visibilityTonightAcrossFacilities(candidate, facilities, rules) 
     }),
   }));
   const visibleCount = results.filter((r) => r.result.visible).length;
-  return { visibleCount, total: facilities.length, results };
+  return { visibleCount, total: groundFacilities.length, results };
 }

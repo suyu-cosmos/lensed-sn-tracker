@@ -10,6 +10,7 @@ import {
   altitudeForAirmass,
   sampleInstant,
   makeObserver,
+  visibilityTonightAcrossFacilities,
 } from '../src/lib/visibility.js';
 
 describe('angularSeparationDeg', () => {
@@ -59,5 +60,26 @@ describe('sampleInstant', () => {
     const times = Array.from({ length: 48 }, (_, i) => new Date(Date.UTC(2026, 5, 1, 0, i * 30)));
     const maxAlt = Math.max(...times.map((t) => sampleInstant(t, observer, 0, 0).targetAltitude));
     expect(maxAlt).toBeGreaterThan(88);
+  });
+});
+
+describe('visibilityTonightAcrossFacilities', () => {
+  const groundFacility = {
+    id: 'ground',
+    site: { latitude: 20, longitude: 0, elevation_m: 0 },
+    min_altitude_deg: 30,
+    max_airmass: 2.0,
+  };
+  const spaceFacility = { id: 'space', space_based: true }; // deliberately no `site`
+
+  it('excludes space_based facilities from both the count and the total, without crashing', () => {
+    const candidate = { ra_deg: 0, dec_deg: 20 };
+    const rules = { visibility: { sun_altitude_max_deg: -12, moon_separation_min_deg: 30, min_window_minutes: 30 } };
+
+    const { total, results } = visibilityTonightAcrossFacilities(candidate, [groundFacility, spaceFacility], rules);
+
+    expect(total).toBe(1);
+    expect(results).toHaveLength(1);
+    expect(results[0].facility.id).toBe('ground');
   });
 });
