@@ -150,12 +150,23 @@ Two things worth knowing before touching this:
   the race window with an edit made directly on GitHub between page load
   and clicking "Update status". There's no real optimistic-concurrency
   check (no ETag/If-Match); a true conflict just means last-write-wins.
-- Any page that calls a write must also fix up `ctx` afterward:
-  `refreshCandidates(ctx)` (`src/lib/data.js`) re-fetches and replaces
-  `ctx.candidates`' contents in place after a candidate is created or a
-  status changes — `ctx.candidates` is otherwise a snapshot from boot and
-  won't reflect the write on its own. Adding a task doesn't need this,
-  since `loadCandidateDetail` always re-fetches sub-issues fresh.
+- Any page that calls a write must also fix up `ctx` afterward, but *how*
+  depends on whether GitHub's response already has everything needed:
+  - **After creating a candidate**, don't call `refreshCandidates` and
+    then immediately navigate to it — hit exactly this race in practice:
+    `listCandidateIssues`'s label-filtered list endpoint has a brief
+    propagation lag right after a new issue is created, so a refetch can
+    still miss it, making the very next `findCandidate` lookup fail with
+    "No candidate found". `new-candidate.js` instead parses the
+    `createIssue` response itself and pushes `{ issue, data, notes }`
+    straight into `ctx.candidates` — no refetch, no race.
+  - **After changing status** (an update to an issue already in the list,
+    not a new one), `refreshCandidates(ctx)` (`src/lib/data.js`) *is* used
+    — re-fetching and replacing `ctx.candidates`' contents in place — since
+    this hasn't shown the same lag and it's simpler than hand-patching the
+    changed fields.
+  - Adding a task needs neither, since `loadCandidateDetail` always
+    re-fetches sub-issues fresh regardless.
 
 ## Config
 

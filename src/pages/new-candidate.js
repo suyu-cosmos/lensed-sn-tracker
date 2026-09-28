@@ -4,10 +4,10 @@
 // resulting issue is byte-for-byte the same shape (see write.js).
 
 import { createIssue } from '../lib/github.js';
-import { refreshCandidates } from '../lib/data.js';
 import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
 import { activeStatuses } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
+import { parseIssueBody } from '../lib/yaml.js';
 import { navigate } from '../router.js';
 
 function optionEls(values, labels = values, selected = null) {
@@ -114,8 +114,15 @@ export function render(container, ctx) {
 
     try {
       const { title, body, labels } = buildCandidateIssue(fields);
-      await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels, assignees: leads });
-      await refreshCandidates(ctx);
+      const issue = await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels, assignees: leads });
+      // Build the candidate straight from the issue we just got back and
+      // merge it into ctx.candidates ourselves, rather than re-listing
+      // issues from GitHub immediately afterward: the label-filtered list
+      // endpoint has a brief propagation lag right after creation, so a
+      // refetch here can race and miss the issue we just made, breaking
+      // the very next navigate() below.
+      const { data, notes } = parseIssueBody(issue.body);
+      ctx.candidates.push({ issue, data, notes });
       navigate(`/candidate/${encodeURIComponent(id)}`);
     } catch (err) {
       errorEl.textContent = `Could not create the candidate: ${err.message}`;
