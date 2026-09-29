@@ -10,7 +10,7 @@ GitHub issues there. See `lensed-sn-tracker-plan_v2.md` for the full design.
 
 - Load `facilities.yaml`, `people.yaml`, `rules.yaml` and every
   `type:candidate` issue from the data repo via a pasted GitHub PAT.
-- Dashboard: candidate / status / leads / visible-tonight / next action.
+- Dashboard: candidate / status / tracks / main lead / visible-tonight / next action.
 - Candidate page: roles, per-facility visibility for tonight + the next
   `lookahead_nights` nights, tasks, observation log, next steps, comments.
 - Resources and People pages as sortable tables.

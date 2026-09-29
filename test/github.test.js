@@ -3,7 +3,7 @@
 // collaborator (confirmed live) — the app must still create the issue.
 
 import { describe, it, expect, vi } from 'vitest';
-import { createIssue } from '../src/lib/github.js';
+import { createIssue, setIssueAssignees } from '../src/lib/github.js';
 
 const repo = { owner: 'o', name: 'r' };
 const assigneeError = () =>
@@ -34,5 +34,17 @@ describe('createIssue', () => {
     const issue = await createIssue({ rest: { issues: { create } } }, repo, { title: 't', body: 'b', assignees: ['shsuyu'] });
     expect(issue.droppedAssignees).toBeUndefined();
     expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setIssueAssignees', () => {
+  it('replaces the assignees, and on a 422 assignee rejection clears them and reports the dropped ones', async () => {
+    const ok = vi.fn().mockResolvedValue({});
+    expect(await setIssueAssignees({ rest: { issues: { update: ok } } }, repo, 3, ['shsuyu'])).toEqual({ dropped: [] });
+    expect(ok.mock.calls[0][0]).toMatchObject({ issue_number: 3, assignees: ['shsuyu'] });
+
+    const update = vi.fn().mockRejectedValueOnce(assigneeError()).mockResolvedValueOnce({});
+    expect(await setIssueAssignees({ rest: { issues: { update } } }, repo, 3, ['stefant'])).toEqual({ dropped: ['stefant'] });
+    expect(update.mock.calls[1][0].assignees).toEqual([]);
   });
 });

@@ -85,7 +85,7 @@ people:
 # `holder` is the default person in charge; `deputy` is pinged if the holder does not
 # acknowledge a new task within `alerts.deputy_escalation_h` (rules.yaml).
 roles:
-  coordinator:           { holder: suyu,  deputy: mkim,  description: "Owns the tracker and overall priorities" }
+  main_lead:             { holder: suyu,  deputy: mkim,  description: "Overall owner of the candidate: priorities and follow-up decisions" }
   trigger_coordinator:   { holder: mkim,  deputy: arose, description: "Decides which facility to trigger and contacts PIs" }
   photometry_lead:       { holder: jlee,  deputy: arose, description: "Owns reduction and light curves" }
   spectroscopy_lead:     { holder: mkim,  deputy: jlee,  description: "Owns spectral reduction and classification" }
@@ -99,9 +99,11 @@ Roles differ from candidate to candidate, but no role may ever be empty. For "wh
 
 1. The candidate's `roles_override.X` in its parent issue, if present.
 2. Otherwise the group default `roles.X.holder` in `people.yaml`.
-3. Otherwise the candidate leads, and the app flags the role as **unassigned** on the candidate page and in the daily digest.
+3. Otherwise the app flags the role as **unassigned** on the candidate page (and, later, in the daily digest).
 
-The app displays the resolved person next to every step, with an "inherited" tag when the person came from level 2, so deliberate assignments and fall-throughs are visually distinct. Changing a global holder immediately updates all candidates that did not override that role. `candidate leads` is the only people-field required when creating a candidate; all other roles inherit.
+The app displays the resolved person next to every step, with an "inherited" tag when the person came from level 2, so deliberate assignments and fall-throughs are visually distinct. Changing a global holder immediately updates all candidates that did not override that role.
+
+**`main_lead` is the candidate's owner** (Milestone 2.5 merged the former separate "candidate leads" field into this role — they meant the same thing in practice). It must resolve when a candidate is created (group default or a pick) and is the candidate issue's GitHub assignee, kept in sync when it changes. Each phase lists the roles relevant to it (§6.2 / `roles:` in rules.yaml); those are what's shown and prompted for — every role still resolves via the order above.
 
 ## 5. GitHub issue conventions (the candidate database)
 
@@ -109,7 +111,7 @@ The app displays the resolved person next to every step, with an "inherited" tag
 
 - Title: `[LSN-2026abc] short description` where `LSN-2026abc` is the internal candidate id (also used as label `cand:LSN-2026abc`).
 - Labels: `type:candidate`, `status:<status>`, `cand:<id>`, `priority:<high|medium|low>`.
-- Assignees: candidate leads (one or several).
+- Assignees: the resolved `main_lead` (see §4.1).
 - Body: a YAML block inside a fenced code block, which the web app parses. Everything after the block is free-text notes.
 
 ```yaml
@@ -140,8 +142,8 @@ time_delays:                 # days, t_X - t_reference (may be negative); filled
 image_dates:                 # per-image milestones, set by photometry  [Milestone 2.5]
   A: { detected: 2026-09-08, peak: 2026-09-20, faded: null }
   B: { detected: null, peak: null, faded: null }
-leads: [suyu, mkim]
-roles_override:              # optional per-candidate overrides of group roles
+roles_override:              # optional per-candidate role holders (main_lead is the owner)
+  main_lead: suyu
   spectroscopy_lead: mkim
 status: awaiting_confirmation   # must match a status id in rules.yaml
 false_positive_type: null    # set from rules.yaml vocabulary when status becomes false_positive
@@ -162,7 +164,7 @@ Every unit of work is a sub-issue of the candidate's parent issue. Task types an
 | `type:trigger` | Request/schedule an observation | `facility`, `instrument`, `mode`, `requested_date`, `exposure`, `images: [A,B]`, `pi_contacted: bool`, `scheduled_utc` |
 | `type:observation` | An observation that was taken | `facility`, `instrument`, `obs_utc`, `filters/setup`, `conditions`, `data_location`, `reduction_status: raw|reduced|published` |
 | `type:analysis` | Photometry, classification, lens model | `product` (`lightcurve`, `spectrum_classification`, `lens_model`, `time_delay`), `result` (free text), `files` |
-| `type:decision` | A choice the leads must make | `deadline`, `options` |
+| `type:decision` | A choice the main lead / team must make | `deadline`, `options` |
 
 Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee is the person in charge of that step. A closed sub-issue is a done step. A trigger sub-issue is normally converted into (or linked to) an observation sub-issue once data are taken.
 
@@ -215,7 +217,7 @@ statuses:
     color: gray
     next_steps:
       - "Confirm lensing nature through classification spectroscopy (SN redshift, lens redshift, SN type)"
-      - "Assign candidate leads"
+      - "Confirm the main lead (group default, or pick someone on the Roles card)"
       - "Request high-resolution imaging (if not yet available through Euclid)"
     transitions:
       awaiting_confirmation: "Confirmation spectroscopy/imaging requested"
@@ -388,7 +390,7 @@ Changing `owner` here and transferring the repos is the whole migration.
 
 ### Milestone 1 — read-only dashboard + visibility (aim: 1–2 weeks)
 - Load `facilities.yaml`, `people.yaml`, `rules.yaml` and all `type:candidate` issues via the GitHub API using a PAT.
-- Dashboard table: candidate, status, leads, "visible tonight: N of M" with facility names, next action (first open sub-issue by due date).
+- Dashboard table: candidate, status, main lead, "visible tonight: N of M" with facility names, next action (first open sub-issue by due date).
 - Candidate page: header, visibility panel for tonight and next 7 nights (altitude curves, window, best airmass, moon separation), task list (sub-issues), observation log (`type:observation` sub-issues), suggested next steps from `rules.yaml`, threaded comments.
 - Resources page and People page as sortable tables.
 - Setup script that creates all labels in the data repo.
@@ -507,10 +509,10 @@ a person writes it to `roles_override` (plan §4.1 level 1).
 
 **Also done during M2.5 (user request): phase-relevant roles + in-page role editor.**
 - `rules.yaml`: each status lists `roles:` — the people.yaml roles that matter in that phase.
-  New candidate / Awaiting confirmation: coordinator, trigger_coordinator, photometry_lead,
+  New candidate / Awaiting confirmation: main_lead, trigger_coordinator, photometry_lead,
   spectroscopy_lead (both confirmation routes). Live follow-up and Post-fade:
   all six (photometry_lead stays relevant post-fade for additional lens imaging).
-  Data complete / False positive: coordinator, data_manager. Unlisted roles still resolve
+  Data complete / False positive: main_lead, data_manager. Unlisted roles still resolve
   normally (§4.1); they're just not emphasised.
 - Candidate page **Roles card**: phase roles up front, others folded under "Not active in this
   phase"; **Edit roles** turns them into dropdowns ("Group default (<holder>)" or a person)
@@ -520,6 +522,18 @@ a person writes it to `roles_override` (plan §4.1 level 1).
   (`newlyRelevantRoles`) — on confirmation that's lens_modeling_lead + data_manager — and
   saves them in the same write as the status.
 - New-candidate form shows only the starting status's roles.
+
+**Also done during M2.5 (user request): leads merged into `main_lead`; old test data removed.**
+- The `coordinator` role was renamed `main_lead` and absorbed the separate `leads` field
+  (same meaning in practice). The New-candidate form has a required **Main lead** picker
+  (group default or a person) instead of a Leads text field; the candidate issue's assignee is
+  the resolved main lead and is re-synced (`setIssueAssignees`, same 422 retry as
+  `createIssue`) when it changes on the Roles card. Dashboard "Leads" column → "Main lead";
+  the candidate header shows it too. Trigger emails CC the mode's lead + `main_lead`.
+- `people.yaml` gains `assignable: false` (the dev account `suyu-cosmos`), hidden from all
+  role/assignee pickers.
+- All test issues and `cand:*` labels from the pre-M2.5 system were deleted at the user's
+  request, so no backward-compatibility code for `leads:` / old statuses was kept.
 
 **Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
 

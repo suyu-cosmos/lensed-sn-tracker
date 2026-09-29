@@ -47,7 +47,8 @@ export function isBackwardTransition(rules, fromId, toId) {
  * Resolve who holds a role for one candidate, in the order from plan §4.1:
  * 1. candidate.roles_override[roleId]
  * 2. people.roles[roleId].holder
- * 3. unassigned (candidate leads carry it by default, flagged in the UI)
+ * 3. unassigned — flagged in the UI (there is no separate "leads" fallback any more:
+ *    the former leads field was merged into the `main_lead` role)
  *
  * Returns `{ personId, source }` where source is 'override' | 'default' | 'unassigned'.
  */

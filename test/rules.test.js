@@ -193,12 +193,12 @@ describe('dashboard summaries', () => {
 describe('phase-relevant roles', () => {
   const r = {
     statuses: [
-      { id: 'new_candidate', roles: ['coordinator', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead'] },
-      { id: 'lensed_sn', roles: ['coordinator', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead', 'lens_modeling_lead', 'data_manager'] },
+      { id: 'new_candidate', roles: ['main_lead', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead'] },
+      { id: 'lensed_sn', roles: ['main_lead', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead', 'lens_modeling_lead', 'data_manager'] },
       { id: 'no_roles_listed' },
     ],
   };
-  const people = { roles: { coordinator: {}, trigger_coordinator: {}, photometry_lead: {}, spectroscopy_lead: {}, lens_modeling_lead: {}, data_manager: {} } };
+  const people = { roles: { main_lead: {}, trigger_coordinator: {}, photometry_lead: {}, spectroscopy_lead: {}, lens_modeling_lead: {}, data_manager: {} } };
 
   it('rolesForStatus uses the declared list, else every group role', () => {
     expect(rolesForStatus(r, 'new_candidate', people)).toHaveLength(4);

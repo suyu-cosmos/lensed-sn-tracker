@@ -111,10 +111,18 @@ an unlisted role still resolves via §4.1. Role edits write `roles_override`
 with `updateCandidateFields(..., { replace: ['roles_override'] })` so "Group
 default" actually removes a pin (deep-merge alone can't delete a key).
 
+**`main_lead` is the candidate's owner** — there is no separate `leads` field
+(it was merged into this role; old test data was deleted, so there's no
+compatibility code for it). It must resolve at creation, is the candidate
+issue's GitHub assignee, and is re-synced via `setIssueAssignees` when it
+changes. People with `assignable: false` in people.yaml (the dev account)
+never appear in pickers — use `assignablePeople`, not `people.people`.
+
 **Role resolution has a strict 3-level fallthrough** (plan §4.1), implemented
 in `resolveRole`/`resolveAllRoles` (`src/lib/rules.js`): a candidate's own
 `roles_override.<role>` wins, else `people.yaml`'s `roles.<role>.holder`,
-else the role is `unassigned` (flagged in the UI, never silently blank).
+else the role is `unassigned` (flagged in the UI, never silently blank; no
+fallback to any other field).
 
 **The visibility engine (`src/lib/visibility.js`) is the trickiest module.**
 astronomy-engine has no built-in "horizon coords for an arbitrary fixed
@@ -216,7 +224,7 @@ Things worth knowing before touching this:
   SOXS vs. MUSE/FORS2). CC is the group-default lead matching the
   instrument's mode (`LEAD_ROLE_BY_MODE`: spectroscopy/ifu ->
   spectroscopy_lead, imaging/nir_imaging -> photometry_lead) plus
-  coordinator, both resolved via `resolveRole` so a candidate's own
+  `main_lead`, both resolved via `resolveRole` so a candidate's own
   `roles_override` wins here exactly as it does everywhere else — and
   deduped against the PI and each other. Every address is that person's
   own `email:` in `people.yaml`.

@@ -80,6 +80,25 @@ export async function createIssue(client, { owner, name }, { title, body, labels
   }
 }
 
+/**
+ * Replace an issue's assignees (e.g. the candidate issue after its main lead
+ * changes). Same GitHub behaviour as createIssue: a non-collaborator makes
+ * the whole update fail with 422, so on exactly that error retry with no
+ * assignees and return the ones that were dropped.
+ */
+export async function setIssueAssignees(client, { owner, name }, issueNumber, assignees) {
+  try {
+    await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, assignees });
+    return { dropped: [] };
+  } catch (err) {
+    const assigneeRejected =
+      err.status === 422 && assignees.length > 0 && (err.response?.data?.errors ?? []).some((e) => e.field === 'assignees');
+    if (!assigneeRejected) throw err;
+    await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, assignees: [] });
+    return { dropped: assignees };
+  }
+}
+
 /** Fetch one issue fresh — used right before an edit to shrink the race window with a concurrent edit made elsewhere (e.g. directly on GitHub). */
 export async function getIssue(client, { owner, name }, issueNumber) {
   const response = await client.rest.issues.get({ owner, repo: name, issue_number: issueNumber });

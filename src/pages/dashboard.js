@@ -1,10 +1,10 @@
 // Dashboard (plan §8 M1, extended in M2.5 Step 5): candidate, status (phase),
-// per-track indicators for that phase, leads, "visible tonight: N of M", and
+// per-track indicators for that phase, main lead, "visible tonight: N of M", and
 // a track-aware next action. Finished (terminal-status) candidates are hidden
 // by default behind a "Show finished" toggle.
 
 import { loadCandidateDetail } from '../lib/data.js';
-import { getStatus, findPerson, isTerminal, trackIndicators, nextAction } from '../lib/rules.js';
+import { getStatus, findPerson, resolveRole, isTerminal, trackIndicators, nextAction } from '../lib/rules.js';
 import { visibilityTonightAcrossFacilities } from '../lib/visibility.js';
 import { escapeHtml, statusPillHtml } from '../lib/format.js';
 
@@ -49,7 +49,7 @@ async function buildRow(ctx, candidate) {
   const routeId = candidateRouteId(candidate);
 
   if (!data) {
-    return { routeId, title: candidate.issue.title, status: null, terminal: false, chips: [], leads: '—', visible: '—', action: { text: '—' } };
+    return { routeId, title: candidate.issue.title, status: null, terminal: false, chips: [], mainLead: '—', visible: '—', action: { text: '—' } };
   }
 
   const { tasks } = await loadCandidateDetail(client, candidate);
@@ -62,7 +62,10 @@ async function buildRow(ctx, candidate) {
     // Unknown statuses are never hidden — a typo in rules.yaml must stay visible (plan §6.1).
     terminal: isTerminal(rules, data.status),
     chips: trackIndicators(rules, data, tasks),
-    leads: (data.leads ?? []).map((id) => findPerson(people, id)?.name ?? id).join(', ') || '—',
+    mainLead: (() => {
+      const id = resolveRole(data, 'main_lead', people).personId;
+      return id ? findPerson(people, id)?.name ?? id : 'unassigned';
+    })(),
     visible: total > 0 ? `${visibleCount} of ${total}` : '—',
     action: nextAction(rules, data, tasks),
   };
@@ -82,7 +85,7 @@ function renderTable(rows, showFinished) {
           </td>
           <td>${statusPillHtml(row.status)}</td>
           <td class="track-chips">${renderTrackChips(row.chips)}</td>
-          <td>${escapeHtml(row.leads)}</td>
+          <td>${escapeHtml(row.mainLead)}</td>
           <td>${escapeHtml(row.visible)}</td>
           <td class="next-action action-${row.action.kind ?? 'none'}">${escapeHtml(row.action.text)}</td>
         </tr>`,
@@ -101,7 +104,7 @@ function renderTable(rows, showFinished) {
     <div class="table-scroll">
       <table>
         <thead>
-          <tr><th>Candidate</th><th>Status</th><th>Tracks</th><th>Leads</th><th>Visible tonight</th><th>Next action</th></tr>
+          <tr><th>Candidate</th><th>Status</th><th>Tracks</th><th>Main lead</th><th>Visible tonight</th><th>Next action</th></tr>
         </thead>
         <tbody>${bodyRows || `<tr><td colspan="6" class="muted">${empty}</td></tr>`}</tbody>
       </table>

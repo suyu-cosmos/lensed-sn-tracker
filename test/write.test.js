@@ -83,7 +83,6 @@ describe('buildCandidateIssue', () => {
       nImages: 4,
       zSource: 1.0,
       snType: 'unknown',
-      leads: ['suyu-cosmos'],
       status: 'new_candidate',
     };
     const { title, body, labels } = buildCandidateIssue(fields);
@@ -95,7 +94,7 @@ describe('buildCandidateIssue', () => {
     expect(data.id).toBe('LSN-test');
     expect(data.ra_deg).toBe(10);
     expect(data.dec_deg).toBe(20);
-    expect(data.leads).toEqual(['suyu-cosmos']);
+    expect(data).not.toHaveProperty('leads'); // merged into the main_lead role
     expect(data.status).toBe('new_candidate');
     expect(data.lens.z_lens).toBe(0.4);
   });
@@ -173,18 +172,18 @@ describe('buildTriggerMailto', () => {
       { id: 'pi2', name: 'PI Two', email: 'pi2@example.org' },
       { id: 'lead1', name: 'Spec Lead', email: 'lead1@example.org' },
       { id: 'photlead1', name: 'Phot Lead', email: 'photlead1@example.org' },
-      { id: 'coord1', name: 'Coordinator', email: 'coord1@example.org' },
+      { id: 'coord1', name: 'Main Lead', email: 'coord1@example.org' },
     ],
     roles: {
       spectroscopy_lead: { holder: 'lead1' },
       photometry_lead: { holder: 'photlead1' },
-      coordinator: { holder: 'coord1' },
+      main_lead: { holder: 'coord1' },
     },
   };
   const candidate = { id: 'LSN-test', tns_name: 'SN test', ra_deg: 10, dec_deg: 20 };
   const facility = { name: 'Test Facility', contact: { email: 'facility@example.org', pi: 'pi1' } };
 
-  it('emails the facility PI, CCs spectroscopy_lead + coordinator for a spectroscopy trigger', () => {
+  it('emails the facility PI, CCs spectroscopy_lead + main_lead for a spectroscopy trigger', () => {
     const { url, to, cc } = buildTriggerMailto({
       candidate,
       facility,
@@ -262,7 +261,7 @@ describe('Milestone 2.5 track fields', () => {
   };
 
   it('new candidates get the full time_delays shape and an empty image_dates', () => {
-    const { body } = buildCandidateIssue({ id: 'X', raDeg: 0, decDeg: 0, leads: ['a'], status: 'new_candidate' });
+    const { body } = buildCandidateIssue({ id: 'X', raDeg: 0, decDeg: 0, status: 'new_candidate' });
     const { data } = parseIssueBody(body);
     expect(data.time_delays).toEqual({ reference_image: 'A', predicted: {}, predicted_err: {}, measured: {}, measured_err: {} });
     expect(data.image_dates).toEqual({});
@@ -308,9 +307,9 @@ describe('Milestone 2.5 track fields', () => {
 
 describe('deepMerge', () => {
   it('merges nested objects, replaces arrays/scalars, and does not mutate inputs', () => {
-    const base = { image_dates: { A: { detected: 'a', peak: null } }, leads: ['x'], n: 1 };
-    const out = deepMerge(base, { image_dates: { A: { peak: 'p' }, B: { detected: 'b' } }, leads: ['y'] });
-    expect(out).toEqual({ image_dates: { A: { detected: 'a', peak: 'p' }, B: { detected: 'b' } }, leads: ['y'], n: 1 });
+    const base = { image_dates: { A: { detected: 'a', peak: null } }, tags: ['x'], n: 1 };
+    const out = deepMerge(base, { image_dates: { A: { peak: 'p' }, B: { detected: 'b' } }, tags: ['y'] });
+    expect(out).toEqual({ image_dates: { A: { detected: 'a', peak: 'p' }, B: { detected: 'b' } }, tags: ['y'], n: 1 });
     expect(base.image_dates.A.peak).toBeNull();
   });
 });
@@ -360,9 +359,9 @@ describe('setTaskTrack', () => {
   });
 
   it('removes the old track label when moving between tracks, and keeps an existing role', async () => {
-    const { client, issues } = taskClient({ cand: 'X', track: 'old', role: 'coordinator' }, ['track:old']);
+    const { client, issues } = taskClient({ cand: 'X', track: 'old', role: 'main_lead' }, ['track:old']);
     const moved = await setTaskTrack(client, repo, task, 'phot_monitoring', rules);
-    expect(moved.data.role).toBe('coordinator');
+    expect(moved.data.role).toBe('main_lead');
     expect(issues.removeLabel.mock.calls.map(([a]) => a.name)).toEqual(['track:old']);
   });
 
@@ -375,7 +374,7 @@ describe('setTaskTrack', () => {
 
 describe('buildCandidateIssue roles_override', () => {
   it('writes the roles chosen in the form, and {} when none are chosen', () => {
-    const base = { id: 'X', raDeg: 0, decDeg: 0, leads: ['a'], status: 'new_candidate' };
+    const base = { id: 'X', raDeg: 0, decDeg: 0, status: 'new_candidate' };
     expect(parseIssueBody(buildCandidateIssue({ ...base, rolesOverride: { photometry_lead: 'shsuyu' } }).body).data.roles_override).toEqual({
       photometry_lead: 'shsuyu',
     });

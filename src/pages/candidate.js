@@ -30,7 +30,7 @@ import {
   assignablePeople,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
-import { createIssue } from '../lib/github.js';
+import { createIssue, setIssueAssignees } from '../lib/github.js';
 import {
   buildTaskIssue,
   buildTriggerMailto,
@@ -863,9 +863,20 @@ function wireRolesForm(container, ctx, candidate, tasks, comments) {
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     try {
+      const mainLeadBefore = resolveRole(candidate.data, 'main_lead', ctx.people).personId;
       // `replace` so a role set back to "Group default" is actually removed.
       candidate.data = await updateCandidateFields(ctx.client, ctx.config.dataRepo, candidate, { roles_override: next }, { replace: ['roles_override'] });
+      // The main lead is the candidate issue's GitHub assignee — keep it in sync.
+      const mainLeadAfter = resolveRole(candidate.data, 'main_lead', ctx.people).personId;
+      let notice = '';
+      if (mainLeadAfter !== mainLeadBefore) {
+        const { dropped } = await setIssueAssignees(ctx.client, ctx.config.dataRepo, candidate.issue.number, mainLeadAfter ? [mainLeadAfter] : []);
+        if (dropped.length) {
+          notice = `Roles saved, but GitHub wouldn't assign ${escapeHtml(findPerson(ctx.people, dropped[0])?.name ?? dropped[0])} (${escapeHtml(dropped[0])}) to the candidate issue — only collaborators on the data repo can be assigned (a placeholder username can't).`;
+        }
+      }
       renderCandidatePage(container, ctx, candidate, tasks, comments);
+      if (notice) container.querySelector('#roles-view')?.insertAdjacentHTML('afterbegin', `<p class="card unassigned">⚠️ ${notice}</p>`);
     } catch (err) {
       errorEl.textContent = `Could not save roles: ${err.message}`;
       submitBtn.disabled = false;
@@ -988,6 +999,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
   container.innerHTML = `
     <h1>${escapeHtml(data?.id ?? candidate.issue.title)} ${statusPillHtml(status)}</h1>
     <p class="muted">
+      ${data ? `Main lead: <strong>${escapeHtml(findPerson(people, resolveRole(data, 'main_lead', people).personId)?.name ?? 'unassigned')}</strong> · ` : ''}
       ${escapeHtml(data?.tns_name ?? '')} ·
       <a href="${candidate.issue.html_url}" target="_blank" rel="noreferrer">issue #${candidate.issue.number}</a>
     </p>

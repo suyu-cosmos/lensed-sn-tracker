@@ -67,7 +67,6 @@ export function buildCandidateIssue(fields) {
       measured_err: {},
     },
     image_dates: {}, // per image { detected, peak, faded } — the event record tracks key off (plan §6.2)
-    leads: fields.leads,
     roles_override: fields.rolesOverride ?? {}, // per-candidate role holders chosen in the form (plan §4.1 level 1)
     status: fields.status,
     false_positive_type: null,
@@ -193,7 +192,7 @@ export function buildTaskIssue(candidateId, type, fields, context = {}) {
  * `contact.pi` (facilities.yaml), since one facility can host more than
  * one program (e.g. vlt's SOXS vs. MUSE/FORS2). CC is the relevant
  * group-default lead for the instrument's mode (LEAD_ROLE_BY_MODE) plus
- * the coordinator, resolved via `resolveRole` so a candidate's own
+ * the main lead, resolved via `resolveRole` so a candidate's own
  * `roles_override` still wins exactly as it would anywhere else in the
  * app. Every address comes from `people.yaml`'s own `email:` field, not a
  * facility-wide placeholder, so it reflects whoever actually holds that
@@ -209,7 +208,7 @@ export function buildTriggerMailto({ candidate, facility, instrument, mode, visi
   const to = toPerson?.email ?? facility.contact?.email ?? '';
 
   const leadRoleId = LEAD_ROLE_BY_MODE[mode] ?? 'spectroscopy_lead';
-  const ccIds = [resolveRole(candidate, leadRoleId, peopleData).personId, resolveRole(candidate, 'coordinator', peopleData).personId];
+  const ccIds = [resolveRole(candidate, leadRoleId, peopleData).personId, resolveRole(candidate, 'main_lead', peopleData).personId];
   const ccPeople = [...new Set(ccIds)] // dedupe (e.g. one person holding both roles)
     .filter((id) => id && id !== piId)
     .map((id) => findPerson(peopleData, id))

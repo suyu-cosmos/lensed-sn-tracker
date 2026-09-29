@@ -5,7 +5,7 @@
 
 import { createIssue } from '../lib/github.js';
 import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
-import { activeStatuses, findPerson, rolesForStatus, assignablePeople } from '../lib/rules.js';
+import { activeStatuses, findPerson, rolesForStatus, assignablePeople, resolveRole } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
 import { parseIssueBody } from '../lib/yaml.js';
 import { navigate } from '../router.js';
@@ -16,6 +16,19 @@ function optionEls(values, labels = values, selected = null) {
     .join('');
 }
 
+function renderMainLead(people, role) {
+  const holder = role.holder ? findPerson(people, role.holder)?.name ?? role.holder : null;
+  const options = assignablePeople(people)
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`)
+    .join('');
+  return `<label>Main lead *${role.description ? ` <span class="muted">— ${escapeHtml(role.description)}</span>` : ''}
+        <select name="role:${MAIN_LEAD}">
+          ${holder ? `<option value="">Group default (${escapeHtml(holder)})</option>` : '<option value="">— choose —</option>'}
+          ${options}
+        </select>
+      </label>`;
+}
+
 /**
  * One dropdown per group role (people.yaml `roles:`). The default choice is
  * "Group default (<current holder>)" and writes nothing, so the candidate
@@ -23,9 +36,16 @@ function optionEls(values, labels = values, selected = null) {
  * (even the current holder) pins that role for this candidate via
  * `roles_override` — resolution order in plan §4.1.
  */
+// The candidate's overall owner (the former separate "leads" field was merged
+// into this role). Always shown, outside the collapsible section; it also
+// becomes the candidate issue's GitHub assignee.
+const MAIN_LEAD = 'main_lead';
+
 function renderRoleOverrides(people) {
-  const roles = Object.entries(people.roles ?? {});
-  if (!roles.length) return '';
+  const roles = Object.entries(people.roles ?? {}).filter(([roleId]) => roleId !== MAIN_LEAD);
+  const mainLead = people.roles?.[MAIN_LEAD];
+  const mainLeadHtml = mainLead ? renderMainLead(people, mainLead) : '';
+  if (!roles.length) return mainLeadHtml;
   const everyone = assignablePeople(people);
   const rows = roles
     .map(([roleId, role]) => {
@@ -41,7 +61,7 @@ function renderRoleOverrides(people) {
         </label>`;
     })
     .join('');
-  return `
+  return `${mainLeadHtml}
       <details class="role-overrides">
         <summary><h3>Roles for this candidate <span class="muted">(optional — defaults to the group roles)</span></h3></summary>
         <p class="muted">Only the roles relevant to the starting status chosen above are shown — the others become relevant later and can be set on the candidate page (or when changing status). Leave a role on "Group default" to follow people.yaml; choosing a person pins it for this candidate only.</p>
@@ -57,7 +77,7 @@ export function render(container, ctx) {
   container.innerHTML = `
     <h1>New candidate</h1>
     <form id="new-candidate-form" class="card">
-      <p class="muted">Only <strong>id</strong>, <strong>leads</strong>, and coordinates are required — everything else can be filled in later by editing the issue directly.</p>
+      <p class="muted">Only <strong>id</strong>, coordinates and a <strong>main lead</strong> are required — everything else can be filled in later.</p>
 
       <label>Candidate id * <input name="id" required placeholder="LSN-2026abc" /></label>
       <label>TNS name <input name="tnsName" placeholder="SN 2026abc" /></label>
@@ -77,7 +97,6 @@ export function render(container, ctx) {
       <label>SN type <select name="snType">${optionEls(SN_TYPES, SN_TYPES, 'unknown')}</select></label>
 
       <h3>Status &amp; people's roles</h3>
-      <label>Leads (GitHub usernames) * <input name="leads" required placeholder="shsuyu, stefanschuldt" /></label>
       <label>Status
         <select name="status">${statuses.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultStatus ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
       </label>
@@ -128,15 +147,6 @@ export function render(container, ctx) {
       return;
     }
 
-    const leads = values.leads
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!leads.length) {
-      errorEl.textContent = 'At least one lead is required.';
-      return;
-    }
-
     const fields = {
       id,
       tnsName: values.tnsName.trim(),
@@ -150,21 +160,27 @@ export function render(container, ctx) {
       nImages: values.nImages ? Number(values.nImages) : null,
       zSource: values.zSource ? Number(values.zSource) : null,
       snType: values.snType,
-      leads,
       status: values.status,
       rolesOverride: Object.fromEntries(
         Object.entries(values)
-          .filter(([key, value]) => key.startsWith('role:') && value && relevantRoles().has(key.slice('role:'.length)))
+          .filter(([key, value]) => key.startsWith('role:') && value && (key === `role:${MAIN_LEAD}` || relevantRoles().has(key.slice('role:'.length))))
           .map(([key, value]) => [key.slice('role:'.length), value]),
       ),
     };
+
+    // The main lead must resolve (group default or a pick) — it's the candidate's owner and assignee.
+    const mainLeadId = resolveRole({ roles_override: fields.rolesOverride }, MAIN_LEAD, ctx.people).personId;
+    if (!mainLeadId) {
+      errorEl.textContent = 'Choose a main lead (there is no group default for main_lead).';
+      return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Creating…';
 
     try {
       const { title, body, labels } = buildCandidateIssue(fields);
-      const issue = await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels, assignees: leads });
+      const issue = await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels, assignees: [mainLeadId] });
       // Build the candidate straight from the issue we just got back and
       // merge it into ctx.candidates ourselves, rather than re-listing
       // issues from GitHub immediately afterward: the label-filtered list
