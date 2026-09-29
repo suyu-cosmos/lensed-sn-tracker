@@ -186,30 +186,32 @@ Three things worth knowing before touching this:
   the race window with an edit made directly on GitHub between page load
   and clicking "Update status". There's no real optimistic-concurrency
   check (no ETag/If-Match); a true conflict just means last-write-wins.
-- Any page that calls a write must also fix up `ctx` afterward, but *how*
-  depends on whether GitHub's response already has everything needed:
-  - **After creating a candidate**, don't call `refreshCandidates` and
-    then immediately navigate to it — hit exactly this race in practice:
-    `listCandidateIssues`'s label-filtered list endpoint has a brief
-    propagation lag right after a new issue is created, so a refetch can
-    still miss it, making the very next `findCandidate` lookup fail with
-    "No candidate found". `new-candidate.js` instead parses the
-    `createIssue` response itself and pushes `{ issue, data, notes }`
-    straight into `ctx.candidates` — no refetch, no race.
-  - **After changing status** (an update to an issue already in the list,
-    not a new one), `refreshCandidates(ctx)` (`src/lib/data.js`) *is* used
-    — re-fetching and replacing `ctx.candidates`' contents in place — since
-    this hasn't shown the same lag and it's simpler than hand-patching the
-    changed fields.
-  - **After adding a task**, the *same* race hits `loadCandidateDetail`'s
-    `listCandidateSubIssues` call (also label-filtered) — this bit us for
-    real (a just-created trigger issue didn't show up in "Tasks" until a
-    full page reload). Fixed the same way: `wireAddTaskForm` calls
-    `loadCandidateDetail` once, and if the task it just created isn't in
-    the returned list yet, merges it in itself via
-    `buildTaskFromIssue(issue)` (`src/lib/data.js`) before rendering. This
-    superseded an earlier (wrong) note here claiming adding a task needed
-    no such handling — it does.
+- **Any GitHub list/search endpoint can lag behind a write you just made
+  through a different endpoint** — hit this three separate times (new
+  candidate, add task, change status) before recognizing it as one
+  pattern, not three bugs. `listCandidateIssues`/`listCandidateSubIssues`
+  are both label-filtered list queries, and each has a brief propagation
+  lag right after the matching write, so calling one immediately after
+  creating or updating the very issue it's supposed to return can hand
+  back stale or missing data — a new candidate's own page saying "No
+  candidate found", a just-added task not showing in "Tasks", a status
+  change on the candidate page appearing to silently do nothing. There
+  used to be a `refreshCandidates(ctx)` helper (`src/lib/data.js`) built
+  on exactly this kind of refetch — it's gone now; don't re-add it or
+  anything shaped like it.
+  - The fix is always the same: **use the data the write call already
+    handed back, instead of asking GitHub for it again.**
+    `createIssue`'s response has the full new issue — `new-candidate.js`
+    parses its `.body` and pushes `{ issue, data, notes }` straight into
+    `ctx.candidates`; `wireAddTaskForm` does the same for a new task via
+    `buildTaskFromIssue(issue)` (`src/lib/data.js`), merging it into
+    whatever `loadCandidateDetail` returned if it's missing there.
+    `changeCandidateStatus` already returns the fully-updated `nextData`
+    — `wireChangeStatusForm` assigns it straight onto `candidate.data`
+    (same object reference held in `ctx.candidates`) rather than
+    re-deriving it from a refetch.
+  - If you add another write, ask first whether its own response already
+    contains everything the next render needs — it almost certainly does.
 
 ## Config
 

@@ -60,22 +60,3 @@ export async function loadCandidateDetail(client, candidate) {
 export function facilityById(facilities, id) {
   return facilities.find((f) => f.id === id);
 }
-
-/**
- * Re-fetch the candidate issue list and replace `ctx.candidates`' contents
- * in place (same array reference, so every page holding a reference to
- * `ctx` sees the update). Call after creating a candidate; adding a task
- * doesn't change this list, so it isn't needed there.
- */
-export async function refreshCandidates(ctx) {
-  const { dataRepo } = config;
-  const candidateIssues = await listCandidateIssues(ctx.client, dataRepo);
-  const candidates = candidateIssues
-    .map((issue) => {
-      const { data, notes } = parseIssueBody(issue.body);
-      return { issue, data, notes };
-    })
-    .filter((c) => c.data !== null || c.issue.body);
-  ctx.candidates.length = 0;
-  ctx.candidates.push(...candidates);
-}

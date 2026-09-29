@@ -8,7 +8,7 @@
 // separation) rather than a plotted altitude curve — the same numbers a
 // curve would be read off of.
 
-import { loadCandidateDetail, facilityById, refreshCandidates, buildTaskFromIssue } from '../lib/data.js';
+import { loadCandidateDetail, facilityById, buildTaskFromIssue } from '../lib/data.js';
 import { getStatus, resolveAllRoles, findPerson, nextStepsFor, transitionsFor, requiredFieldsFor, vocabulary } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue } from '../lib/github.js';
@@ -305,11 +305,17 @@ function wireChangeStatusForm(container, ctx, candidate, rules) {
     const submitBtn = form.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     try {
-      await changeCandidateStatus(ctx.client, ctx.config.dataRepo, candidate, newStatusId, extraFields);
-      // ctx.candidates holds the stale (pre-change) parsed body, so a
-      // straight re-render would show the old status — refresh first.
-      await refreshCandidates(ctx);
-      await render(container, ctx, { id: candidate.data?.id ?? `issue-${candidate.issue.number}` });
+      // changeCandidateStatus already returns the fully-updated data —
+      // patch it into `candidate` directly (same object reference inside
+      // ctx.candidates) rather than trusting an immediate refreshCandidates
+      // to reflect a write we just made: its listCandidateIssues call has
+      // the same label-filtered-list propagation lag we already hit for
+      // new-candidate and add-task, so it could just as easily hand back
+      // the pre-change body and make the update look like it "did nothing".
+      const nextData = await changeCandidateStatus(ctx.client, ctx.config.dataRepo, candidate, newStatusId, extraFields);
+      candidate.data = nextData;
+      const { tasks, comments } = await loadCandidateDetail(ctx.client, candidate);
+      renderCandidatePage(container, ctx, candidate, tasks, comments);
     } catch (err) {
       errorEl.textContent = `Could not update status: ${err.message}`;
       submitBtn.disabled = false;
