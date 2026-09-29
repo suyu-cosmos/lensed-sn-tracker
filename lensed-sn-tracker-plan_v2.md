@@ -470,6 +470,13 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
   tracks asks for the target image (required). New trigger fields: Cadence (days) and Until.
   The task is created with the role-resolved assignee; if GitHub drops it (e.g. a placeholder
   username in people.yaml), a precise warning says so.
+- The Track select starts at "— choose a track —" and must be chosen (or "Other (untracked)"
+  explicitly) — an untracked task was filed by mistake when it silently defaulted to none.
+  "Other tasks" rows have a "move to… / Move" control (`setTaskTrack` in `write.js`) to refile
+  a task into one of the phase's tracks.
+- `createIssue` retries without assignees when GitHub rejects them with 422 (it does *not*
+  silently drop non-collaborator assignees), so tasks owned by placeholder usernames are
+  still created, unassigned, with a warning.
 - **Change-status**: a hint appears (never automatic) when every known image has a `faded`
   date and `post_fade` is a declared transition.
 - `wireFacilityCascade` now takes an options object and an `allowed()` track getter, returns
