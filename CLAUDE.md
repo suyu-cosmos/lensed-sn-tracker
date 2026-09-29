@@ -200,7 +200,7 @@ owns every title/label/body-shape convention from plan §5.1/§5.2 in one
 place (`buildCandidateIssue`, `buildTaskIssue`, `changeCandidateStatus`,
 `buildTriggerMailto`), on top of the raw REST calls in `src/lib/github.js`
 (`createIssue`, `getIssue`, `updateIssueBody`, `addLabels`, `removeLabel`).
-Three things worth knowing before touching this:
+Things worth knowing before touching this:
 - **`buildTriggerMailto` resolves its To/CC from `people.yaml`, not a
   static facility field.** To is the program PI — an instrument's own
   `pi:` overrides the facility-level `contact.pi` (facilities.yaml), since
@@ -212,6 +212,12 @@ Three things worth knowing before touching this:
   `roles_override` wins here exactly as it does everywhere else — and
   deduped against the PI and each other. Every address is that person's
   own `email:` in `people.yaml`.
+- **An assignee who isn't a repo collaborator makes GitHub reject the
+  whole `issues.create` with 422** (confirmed live — it is *not* silently
+  dropped). `createIssue` retries once without assignees on exactly that
+  error and returns `droppedAssignees`; pages warn instead of failing.
+  Placeholder GitHub usernames in `people.yaml` (stefant, alejandram,
+  yushanx) hit this until replaced with real, invited accounts.
 - **Labels auto-create on write**, confirmed against the live API — both
   `issues.create`'s `labels` array and `issues.addLabels` create a label
   that doesn't exist yet (default gray). This is *different* from GitHub's

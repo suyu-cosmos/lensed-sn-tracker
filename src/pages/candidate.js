@@ -708,7 +708,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
       if ((issue.assignees ?? []).length === 0) {
         const wanted = assignees[0];
         const reminder = wanted
-          ? `Couldn't assign ${findPerson(ctx.people, wanted)?.name ?? wanted} (${wanted}) on GitHub — it silently drops assignees who aren't collaborators on the data repo (e.g. a placeholder GitHub username in people.yaml). Please assign someone by hand${type === 'trigger' ? ' and email the PI (above)' : ''}.`
+          ? `Task created, but unassigned: GitHub wouldn't assign ${findPerson(ctx.people, wanted)?.name ?? wanted} (${wanted}) — only collaborators on the data repo can be assigned (a placeholder GitHub username in people.yaml can't). Please assign someone by hand${type === 'trigger' ? ' and email the PI (above)' : ''}.`
           : type === 'trigger'
             ? 'No assignee is set on this task — please email the PI (above) and assign someone responsible for the follow-up.'
             : "No assignee is set on this task yet — consider assigning someone so it doesn't get lost.";

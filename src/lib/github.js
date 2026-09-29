@@ -60,11 +60,24 @@ export async function listCandidateSubIssues(client, { owner, name }, candidateI
  * only apply labels that already exist).
  */
 export async function createIssue(client, { owner, name }, { title, body, labels = [], assignees = [] }) {
-  // Assignees who aren't valid collaborators are silently dropped by the
-  // API rather than causing an error, so an invalid `leads:`/facility
-  // contact entry doesn't block issue creation.
-  const response = await client.rest.issues.create({ owner, repo: name, title, body, labels, assignees });
-  return response.data;
+  // An assignee who isn't a collaborator on the repo (e.g. a placeholder
+  // GitHub username in people.yaml) makes GitHub REJECT the whole create
+  // with 422 "assignees X cannot be assigned" — it is NOT silently dropped
+  // (confirmed against the live API; an earlier comment here claimed
+  // otherwise and broke task creation for placeholder role holders). So on
+  // that specific error, retry once without assignees and report which ones
+  // were dropped via `droppedAssignees`, so the caller can warn instead of
+  // losing the whole write.
+  try {
+    const response = await client.rest.issues.create({ owner, repo: name, title, body, labels, assignees });
+    return response.data;
+  } catch (err) {
+    const assigneeRejected =
+      err.status === 422 && assignees.length > 0 && (err.response?.data?.errors ?? []).some((e) => e.field === 'assignees');
+    if (!assigneeRejected) throw err;
+    const response = await client.rest.issues.create({ owner, repo: name, title, body, labels });
+    return { ...response.data, droppedAssignees: assignees };
+  }
 }
 
 /** Fetch one issue fresh — used right before an edit to shrink the race window with a concurrent edit made elsewhere (e.g. directly on GitHub). */
