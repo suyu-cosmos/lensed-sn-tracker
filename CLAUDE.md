@@ -22,6 +22,20 @@ half of **Milestone 2** (new-candidate/add-task/trigger/change-status) are
 built; GitHub OAuth via a Cloudflare Worker (the rest of Milestone 2) was
 deliberately deferred — see "Auth" below.
 
+**Next up is Milestone 2.5 — workflow phases and tracks** (plan §6.2 for the
+model, §8 "Milestone 2.5" for the step-by-step implementation plan with an
+acceptance check). Short version: a candidate's `status` is its coarse
+*phase* (new_candidate → awaiting_confirmation → lensed_sn "Live follow-up"
+→ post_fade → data_complete, or false_positive), and the parallel science
+workstreams inside a phase (photometric monitoring, spectroscopic
+monitoring, HST/JWST, early-phase spectroscopy of each trailing image, …)
+are *tracks* declared in `rules.yaml` and recorded on each task as
+`track:`. Track state is derived from tasks, never stored; per-image tracks
+are optional per image. Work through the plan's steps in order and mark
+them `[done]` there as you go — the plan file is the source of truth for
+what's built vs. pending, not this summary. Analysis tracking is
+Milestone 4, after data gathering works.
+
 ## Commands
 
 ```sh

@@ -131,15 +131,27 @@ lens:
 source:
   z_source: 1.05
   sn_type: unknown           # unknown | Ia | II | Ibc | SLSN | other
-time_delays:                 # predicted, days relative to image A; filled by modeling
+time_delays:                 # days, t_X - t_reference (may be negative); filled by modeling
+  reference_image: A
   predicted: { B: 9.5, C: 14.1, D: 31.0 }
+  predicted_err: { B: 2.0, C: 3.0, D: 8.0 }   # 1 sigma, days       [Milestone 2.5]
   measured: {}
+  measured_err: {}                            #                      [Milestone 2.5]
+image_dates:                 # per-image milestones, set by photometry  [Milestone 2.5]
+  A: { detected: 2026-09-08, peak: 2026-09-20, faded: null }
+  B: { detected: null, peak: null, faded: null }
 leads: [suyu, mkim]
 roles_override:              # optional per-candidate overrides of group roles
   spectroscopy_lead: mkim
-status: awaiting_classification_spectrum   # must match a status id in rules.yaml
+status: awaiting_confirmation   # must match a status id in rules.yaml
 false_positive_type: null    # set from rules.yaml vocabulary when status becomes false_positive
 ```
+
+`image_dates` is the event record the workflow model (§6.2) keys off: a trailing image's
+`detected` date opens early-phase spectroscopy for it, and every image having a `faded` date
+is the trigger to leave live follow-up. Combined with `time_delays.predicted ± predicted_err`
+it also gives the "next image expected ~date ± err" shown on the candidate page and, later,
+the trailing-image alert (Milestone 3).
 
 ### 5.2 Sub-issues = follow-up tasks
 
@@ -154,6 +166,18 @@ Every unit of work is a sub-issue of the candidate's parent issue. Task types an
 
 Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee is the person in charge of that step. A closed sub-issue is a done step. A trigger sub-issue is normally converted into (or linked to) an observation sub-issue once data are taken.
 
+**Added in Milestone 2.5 (all optional, all task types unless noted):**
+
+| Field | Meaning |
+|---|---|
+| `track` | Id of the follow-up track this task belongs to (§6.2). Also set as label `track:<id>`. Tasks without a track still work and are shown under "Other tasks". |
+| `image` | For tasks in a `per_image` track: which trailing image this task targets (e.g. `B`). |
+| `role` | Role responsible (e.g. `photometry_lead`); defaults from the track. The assignee is resolved from it via §4.1, and `alerts.deputy_escalation_h` uses `people.roles[role].deputy`. |
+| `cadence_days`, `until` | Trigger only: a recurring monitoring campaign is **one** trigger issue with a cadence, not one issue per epoch. `cadence_days: null` = one-off. |
+| `epochs` | Observation only: list of `{obs_utc, filters/setup, conditions}` appended per epoch of a campaign, so one observation issue logs a whole cadence. |
+
+`exposure` stays in the schema but is not collected by the app's form; it is left for the PI / trigger coordinator.
+
 ### 5.3 Label set (created by a setup script)
 
 - `type:candidate`, `type:trigger`, `type:observation`, `type:analysis`, `type:decision`
@@ -161,6 +185,7 @@ Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee i
 - `priority:high|medium|low`
 - `facility:<id>` — one per facility
 - `cand:<id>` — created when a candidate is added
+- `track:<id>` — one per track in `rules.yaml` (Milestone 2.5)
 
 ### 5.4 Issue templates (`.github/ISSUE_TEMPLATE/`)
 
@@ -181,9 +206,10 @@ visibility:
   lookahead_nights: 7
 
 statuses:
-  # The list below covers the first stages only. Later stages (monitoring,
-  # trailing-image arrival, time-delay measurement, archiving) are added here
-  # as the workflow matures; see "Extending statuses" below.
+  # Candidate PHASES (see §6.2). Parallel work inside a phase is a TRACK, not a status.
+  # Target model for Milestone 2.5 — ids new_candidate/awaiting_confirmation/lensed_sn/
+  # false_positive already exist in the live rules.yaml; post_fade/data_complete and the
+  # `tracks:` keys are added in Milestone 2.5.
   - id: new_candidate
     label: New candidate
     color: gray
@@ -192,22 +218,44 @@ statuses:
       - "Assign candidate leads"
       - "Request high-resolution imaging (if not yet available through Euclid)"
     transitions:
-      awaiting_classification_spectrum: "Classification spectrum requested"
-  - id: awaiting_classification_spectrum
-    label: Awaiting classification spectrum
+      awaiting_confirmation: "Confirmation spectroscopy/imaging requested"
+  - id: awaiting_confirmation        # renamed from awaiting_classification_spectrum (done)
+    label: Awaiting confirmation
     color: amber
     next_steps:
+      - "Spectroscopy: show z_SN > z_lens"
+      - "Or imaging (ideally high-resolution) showing multiple variable SN images"
       - "Determine whether this is a strongly lensed SN or a false positive"
     transitions:
       lensed_sn: "Confirmed strongly lensed SN"
       false_positive: "Not a strongly lensed SN"
-  - id: lensed_sn
-    label: Confirmed lensed SN
+  - id: lensed_sn                    # id kept; this is the LIVE phase (steps 3a, 3b, 4)
+    label: Live follow-up
     color: green
+    tracks: [phot_monitoring, spec_monitoring, space_followup, next_image_early_phase_spec]
     next_steps:
-      - "Trigger imaging monitoring"
-      - "Trigger spectroscopic sequence"
-      - "Trigger HST or JWST imaging"
+      - "Start photometric monitoring (daily / every other day) on all images"
+      - "Start spectroscopic monitoring (~weekly)"
+      - "Trigger HST/JWST imaging + spectroscopy of the lens system"
+      - "Record each image's detected/peak/faded dates as they happen"
+    transitions:
+      post_fade: "All SN images have faded"
+  - id: post_fade                    # step 5
+    label: Post-fade lens follow-up
+    color: blue
+    tracks: [lens_followup]
+    next_steps:
+      - "High-resolution imaging of the lens system without the SN"
+      - "Spatially resolved kinematics of the lens"
+    transitions:
+      data_complete: "Lens-system data complete"
+      lensed_sn: "Late-time SN data needed (re-brightening, missed image)"
+  - id: data_complete
+    label: Data complete
+    color: gray
+    terminal: true                   # data gathering done; analysis tracked separately (Milestone 4)
+    next_steps:
+      - "Close open data-gathering tasks; record data locations"
   - id: false_positive
     label: False positive
     color: gray
@@ -230,6 +278,54 @@ alerts:
   trailing_image_warning_days: 5   # flag candidate when predicted arrival is within N days
   stale_task_days: 3               # flag open trigger tasks with no update in N days
   deputy_escalation_h: 24          # ping the role deputy if a task is unacknowledged this long
+
+# Follow-up TRACKS (Milestone 2.5, §6.2): parallel workstreams inside a phase.
+tracks:
+  - id: phot_monitoring
+    label: Photometric monitoring
+    role: photometry_lead
+    task_type: trigger
+    modes: [imaging, nir_imaging]
+    default_cadence_days: 1          # daily / every other day
+    purposes:
+      - "Catch first appearance of the next image (gates early-phase spectroscopy)"
+      - "Light curves of all images → time delays"
+      - "Light curves for SN properties"
+  - id: spec_monitoring
+    label: Spectroscopic monitoring
+    role: spectroscopy_lead
+    task_type: trigger
+    modes: [spectroscopy, ifu]
+    default_cadence_days: 7          # ~weekly or slower
+    purposes:
+      - "Spectroscopic time delays"
+      - "SN spectral evolution (explosion physics)"
+  - id: space_followup
+    label: HST/JWST imaging & spectroscopy
+    role: lens_modeling_lead
+    task_type: trigger
+    facilities: [hst, jwst]
+    purposes:
+      - "High-resolution imaging of lensed arcs for lens mass modelling"
+      - "Lens-galaxy kinematics for lens mass modelling"
+      - "Additional SN spectroscopy"
+  - id: next_image_early_phase_spec
+    label: Spectroscopy of early phase of next SN image from appearance
+    role: spectroscopy_lead
+    task_type: trigger
+    modes: [ifu, spectroscopy]
+    instruments: [vlt/muse]          # current choice; edit here to swap/add instruments
+    starts_on: image_detected        # a trailing image's image_dates.<X>.detected
+    per_image: true                  # eligible for every trailing image, required for none
+    purposes:
+      - "SN progenitors from the earliest phase"
+      - "Spectroscopy of galaxies in the lens environment (environment, external convergence)"
+  - id: lens_followup
+    label: Post-fade lens-system follow-up
+    role: lens_modeling_lead
+    task_type: trigger
+    purposes:
+      - "High-resolution imaging and spatially resolved lens kinematics after the SN fades"
 ```
 
 ### 6.1 Extending statuses
@@ -239,9 +335,41 @@ alerts:
 - The app reads the `statuses` list at load time and builds the status pill, the dashboard filter, the "change status" menu (from `transitions`) and the next-steps panel from it. Adding a status is a one-block edit to `rules.yaml` plus one `status:<id>` label in the data repo, which `setup-labels.js` creates idempotently on re-run.
 - `transitions` is advisory: the menu lists the declared transitions first, with an "other" option that allows any status, so an unanticipated path never blocks anyone.
 - Each status may carry optional keys: `terminal` (excluded from the active dashboard), `requires` (candidate YAML fields that must be filled when entering the status; the app prompts for them), `color`, and `tasks_template` (a list of sub-issues to create automatically on entering the status, e.g. the three triggers under `lensed_sn`).
-- Renaming a status id requires a migration: `setup-labels.js --rename old:new` relabels all issues. Prefer adding new statuses over renaming.
+- Renaming a status id requires a migration: `setup-labels.js --rename old:new` relabels all issues. Prefer adding new statuses over renaming. (Done once: `awaiting_classification_spectrum` → `awaiting_confirmation`, since confirmation can also come from imaging. `--rename` relabels issues only — it does not edit the `status:` field in issue bodies, so check bodies separately.)
 - Candidates whose `status` is not in the list are shown with a warning pill rather than hidden, so a typo in `rules.yaml` is visible, not silent.
 - Vocabularies (`false_positive_type`, later `sn_type`, `lens_type`, etc.) follow the same pattern and populate dropdowns in the forms.
+- `tasks_template` (auto-creating sub-issues on entering a status) is **not implemented**; tracks (§6.2) plus the Add-task form cover this for now.
+- `requires` only works for **top-level** candidate fields: `changeCandidateStatus` merges extra fields flat, so a nested field like `time_delays.measured` would be written as a literal dotted key.
+- A new status `color` must also be added to `KNOWN_COLORS` (`src/lib/format.js`), `.pill.<color>` in `style.css`, and `STATUS_COLORS` in `setup-labels.js` — otherwise it silently renders gray.
+
+### 6.2 Workflow model: phases and tracks
+
+The science workflow is not one linear sequence after confirmation (steps 3a and 3b run in
+parallel; step 4 is gated on an *event* while 3a keeps running), so it is modelled in two layers:
+
+- **Status = phase.** A candidate is in exactly one phase at a time. The rule for adding a
+  phase: *a status changes only when the kind of attention the candidate needs changes.*
+  Phases: `new_candidate` → `awaiting_confirmation` → (`false_positive`, terminal) or
+  `lensed_sn` ("Live follow-up": time-critical, SN visible, nightly visibility matters) →
+  `post_fade` (not time-critical, target is the lens system) → `data_complete` (terminal).
+- **Tracks = parallel workstreams within a phase.** Each status lists the `tracks` expected in
+  it. A track carries its purposes, responsible role, allowed modes/instruments/facilities,
+  default cadence, and optionally an event gate (`starts_on`) and `per_image`. Every task
+  records its `track` (and `image` for per-image tracks).
+- **Step 4 is a track, not a phase**, because photometric monitoring must continue while
+  early-phase spectroscopy of the next image runs.
+- **Track state** is derived, never stored: *waiting* (a `starts_on` event hasn't happened),
+  *not started* (no tasks), *active* (any open task), *done* (has tasks and all are closed).
+- **`per_image` semantics:** once trailing image X has `image_dates.X.detected`, it is
+  *eligible*; it is *targeted* only if a task with `image: X` exists. Eligible-but-untargeted
+  images show as "not targeted", never as missing/overdue, and never block the track from
+  being done or the candidate from moving to `post_fade`. In practice we expect to target
+  only the second-appearing image; targeting every trailing image must also work.
+- **Instruments are data, not code.** A track's `instruments:` list is what the Add-task form
+  offers for it; if empty, anything matching the track's `modes` (or `facilities`) is offered.
+  Swapping MUSE for another IFU later is a one-line `rules.yaml` edit.
+- **Analysis is out of scope for statuses.** A candidate can be `data_complete` while time
+  delays / lens modelling / SN analysis continue; analysis gets its own tracks in Milestone 4.
 
 ## 7. Web-app config (`config.json` in the code repo)
 
@@ -266,11 +394,85 @@ Changing `owner` here and transferring the repos is the whole migration.
 - Setup script that creates all labels in the data repo.
 
 ### Milestone 2 — writing from the app
-- "New candidate" form → creates parent issue with YAML block and `cand:` label.
-- "Add task" → creates sub-issue linked to parent.
-- "Trigger" button → opens a pre-filled mailto to the PI with coordinates, finder-chart link, visibility window, and creates a `type:trigger` sub-issue.
-- Change status → updates `status:` label.
-- GitHub OAuth via Cloudflare Worker replaces the PAT.
+- "New candidate" form → creates parent issue with YAML block and `cand:` label. **[done]**
+- "Add task" → creates sub-issue linked to parent. **[done]**
+- "Trigger" button → opens a pre-filled mailto to the PI with coordinates, finder-chart link, visibility window, and creates a `type:trigger` sub-issue. **[done]** To = the program PI (instrument-level `pi:` overrides facility `contact.pi`); CC = the mode's lead role (spectroscopy_lead / photometry_lead) + coordinator.
+- Change status → updates `status:` label. **[done]** (updates the YAML field and the label together)
+- GitHub OAuth via Cloudflare Worker replaces the PAT. **[deferred on purpose — PAT with Issues read & write for now]**
+
+### Milestone 2.5 — workflow phases and tracks (next)
+
+Implements §6.2. Each step is independently shippable; do them in order. Every step keeps
+existing candidates working (only additive keys, except the one rename already done).
+
+**Step 0 — done.** Renamed `awaiting_classification_spectrum` → `awaiting_confirmation`
+(rules.yaml, `status:` label via `setup-labels.js --rename`).
+
+**Step 1 — fix status-label drift (bug).** `changeCandidateStatus` (`src/lib/write.js`) removes
+only the status label named in the body it just read, so one stale read leaves two `status:*`
+labels on an issue (seen on #11). Fix: after writing, remove *every* `status:*` label except
+the new one, using the labels on the freshly fetched issue. Add a unit test with a mocked client.
+
+**Step 2 — data model (lensed-sn-data).**
+- `rules.yaml`: relabel `lensed_sn` → "Live follow-up"; add `post_fade`, `data_complete`
+  (terminal); add the top-level `tracks:` list and each status's `tracks:` key exactly as in §6.
+- `facilities.yaml`: add `hst` (`space_based: true`; instruments to be confirmed with the
+  coordinator, e.g. WFC3/UVIS, WFC3/IR, ACS, STIS).
+- `setup-labels.js`: create `track:<id>` labels from `rules.yaml` tracks; add `blue` (and any
+  other new colour) to `STATUS_COLORS`.
+- Issue templates: `candidate.yml` gains `time_delays.reference_image/predicted_err/measured_err`
+  and `image_dates`; `trigger.yml` gains `track`, `image`, `role`, `cadence_days`, `until`;
+  `observation.yml` gains `track`, `image`, `epochs`.
+
+**Step 3 — app library (lensed-sn-tracker `src/lib/`).**
+- `format.js`/`style.css`: add `blue` to `KNOWN_COLORS` and `.pill.blue`.
+- `rules.js`: `getTrack(rules, id)`, `tracksForStatus(rules, statusId)`,
+  `trackState(track, tasks, candidate)` → `waiting|not_started|active|done` (§6.2 rules),
+  `eligibleImages(track, candidate)` → trailing images with a `detected` date, each flagged
+  targeted/untargeted, `trackInstruments(track, facilities)` → instruments/modes/facilities filter.
+- `write.js`: `buildCandidateIssue` writes the new `time_delays` shape and `image_dates: {}`;
+  `buildTaskIssue` writes `track`, `image`, `role`, `cadence_days`, `until`, `epochs`, adds label
+  `track:<id>`, and sets the assignee from `resolveRole(candidate, role)`; new
+  `updateCandidateFields(client, repo, candidate, patch)` (fetch-fresh → deep-merge → write,
+  returns the new data — same "use the write's own result" rule as everywhere else).
+- Tests for all of the above (`test/rules.test.js` new; extend `test/write.test.js`).
+
+**Step 4 — candidate page (`src/pages/candidate.js`).**
+- "Follow-up tracks" section replacing the flat task table: one card per track of the current
+  status — label, purposes, derived state, its tasks, and "+ Add task" pre-set to that track.
+  Per-image tracks list eligible images with "+ Add for image X"; untargeted images read
+  "not targeted". Tasks with no/unknown `track` go in an "Other tasks" card.
+- Add-task form: Track selector first; it pre-fills task type, restricts instruments
+  (`trackInstruments`), cadence and role (hence assignee). The existing mode-driven Wavelength
+  band / Images rules still apply.
+- "Image timeline" panel: per image, detected / peak / faded dates editable in place (via
+  `updateCandidateFields`), plus "next image expected ~date ± err" from `time_delays`.
+- Change-status: when every image has a `faded` date, show a hint suggesting `post_fade`
+  (a hint only; never automatic).
+
+**Step 5 — dashboard (`src/pages/dashboard.js`).**
+- Per-row track indicators for the current phase (e.g. Phot ● Spec ● Space ○ Early-phase ⏳).
+- "Hide terminal statuses" toggle, on by default (`activeStatuses` is currently only used by
+  the New-candidate form).
+- Next action becomes track-aware (earliest due open task across tracks, else the phase's first
+  `next_step`).
+
+**Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
+
+**Acceptance check** (manual, on a test candidate): confirm → Live follow-up shows four track
+cards; add a daily GROND trigger to Photometric monitoring (assignee = photometry_lead);
+record image B `detected` → Early-phase spectroscopy becomes eligible for B with MUSE as the
+only instrument; add it for B only; set every image `faded` → post-fade hint → move to
+`post_fade` → one Lens follow-up card; → `data_complete` hides the row from the dashboard.
+
+**Explicitly deferred:** alert automation (Milestone 3); `tasks_template` auto-creation;
+per-epoch append UI (edit `epochs` on GitHub for now); light-curve panel; analysis tracking
+(Milestone 4).
+
+### Milestone 4 — analysis tracking (after data gathering works)
+- Analysis tracks (time delays, lens modelling, SN properties, lens environment / external
+  convergence), independent of the data-gathering phase, so a `data_complete` candidate can
+  still show analysis in progress. Design when Milestone 2.5 is in use.
 
 ### Milestone 3 — automation
 - GitHub Action: nightly validation of YAML files; daily digest comment listing stale tasks and trailing-image alerts; optional Slack/email webhook.
