@@ -414,16 +414,21 @@ used to remove only the status label named in the body it just read, so one stal
 new one (union of the fresh issue's labels and the body's old status). Covered by mocked-client
 tests in `test/write.test.js`; audited that every live candidate has exactly one status label.
 
-**Step 2 — data model (lensed-sn-data).**
-- `rules.yaml`: relabel `lensed_sn` → "Live follow-up"; add `post_fade`, `data_complete`
-  (terminal); add the top-level `tracks:` list and each status's `tracks:` key exactly as in §6.
-- `facilities.yaml`: add `hst` **[done]** — `space_based: true`, WFC3/UVIS (`wfc3_uvis`) and
-  WFC3/IR (`wfc3_ir`), PI `shsuyu` (TBC); `facility:hst` label created.
-- `setup-labels.js`: create `track:<id>` labels from `rules.yaml` tracks; add `blue` (and any
-  other new colour) to `STATUS_COLORS`.
+**Step 2 — data model (lensed-sn-data). [done]**
+- `rules.yaml`: `lensed_sn` relabelled "Live follow-up"; `post_fade` and `data_complete`
+  (terminal) added; top-level `tracks:` list and each status's `tracks:` key added as in §6.
+  Cross-checked: every transition/track/role/mode/facility/instrument reference resolves.
+- `facilities.yaml`: `hst` added — `space_based: true`, WFC3/UVIS (`wfc3_uvis`) and
+  WFC3/IR (`wfc3_ir`), PI `shsuyu` (TBC).
+- `setup-labels.js`: creates `track:<id>` labels from `rules.yaml` tracks; `blue` added to
+  `STATUS_COLORS`. Run: created `status:post_fade`, `status:data_complete`, five `track:*`
+  labels, `facility:hst`.
 - Issue templates: `candidate.yml` gains `time_delays.reference_image/predicted_err/measured_err`
   and `image_dates`; `trigger.yml` gains `track`, `image`, `role`, `cadence_days`, `until`;
-  `observation.yml` gains `track`, `image`, `epochs`.
+  `observation.yml` gains `track`, `image`, `epochs` (and its example instrument is now `soxs`).
+- Until Step 3 lands, the app already shows the new phases in Change-status and the next-steps
+  panel (data-driven), but `post_fade`'s blue pill renders gray, and tracks/new fields are not
+  yet read or written by the app.
 
 **Step 3 — app library (lensed-sn-tracker `src/lib/`).**
 - `format.js`/`style.css`: add `blue` to `KNOWN_COLORS` and `.pill.blue`.
