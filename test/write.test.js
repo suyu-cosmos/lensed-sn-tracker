@@ -5,7 +5,14 @@
 // interchangeable.
 
 import { describe, it, expect, vi } from 'vitest';
-import { buildCandidateIssue, buildTaskIssue, buildTriggerMailto, changeCandidateStatus } from '../src/lib/write.js';
+import {
+  buildCandidateIssue,
+  buildTaskIssue,
+  buildTriggerMailto,
+  changeCandidateStatus,
+  deepMerge,
+  updateCandidateFields,
+} from '../src/lib/write.js';
 import { parseIssueBody, stringifyIssueBody } from '../src/lib/yaml.js';
 
 /** A fake Octokit client whose issue has the given body data + label names. */
@@ -243,5 +250,85 @@ describe('buildTriggerMailto', () => {
     });
     expect(to.id).toBe('coord1');
     expect(cc.map((p) => p.id)).not.toContain('coord1');
+  });
+});
+
+describe('Milestone 2.5 track fields', () => {
+  const rules = { tracks: [{ id: 'phot_monitoring', role: 'photometry_lead' }] };
+  const peopleData = {
+    people: [{ id: 'stefant' }, { id: 'other' }],
+    roles: { photometry_lead: { holder: 'stefant' } },
+  };
+
+  it('new candidates get the full time_delays shape and an empty image_dates', () => {
+    const { body } = buildCandidateIssue({ id: 'X', raDeg: 0, decDeg: 0, leads: ['a'], status: 'new_candidate' });
+    const { data } = parseIssueBody(body);
+    expect(data.time_delays).toEqual({ reference_image: 'A', predicted: {}, predicted_err: {}, measured: {}, measured_err: {} });
+    expect(data.image_dates).toEqual({});
+  });
+
+  it('a tracked trigger defaults its role from the track, adds track:<id>, and resolves the assignee', () => {
+    const { title, body, labels, assignees } = buildTaskIssue(
+      'X',
+      'trigger',
+      { track: 'phot_monitoring', cadenceDays: 1, until: '2026-12-01', facility: 'mpg22', instrument: 'grond', mode: 'imaging', images: [] },
+      { rules, candidate: { id: 'X' }, peopleData },
+    );
+    const { data } = parseIssueBody(body);
+    expect(data).toMatchObject({ track: 'phot_monitoring', role: 'photometry_lead', cadence_days: 1, until: '2026-12-01', image: null });
+    expect(labels).toContain('track:phot_monitoring');
+    expect(assignees).toEqual(['stefant']);
+    expect(title).toBe('[X] trigger: mpg22/grond');
+  });
+
+  it("a candidate's roles_override picks the assignee, and a per-image task names its image", () => {
+    const { title, assignees } = buildTaskIssue(
+      'X',
+      'trigger',
+      { track: 'phot_monitoring', image: 'B', facility: 'vlt', instrument: 'muse', mode: 'ifu', images: [] },
+      { rules, candidate: { roles_override: { photometry_lead: 'other' } }, peopleData },
+    );
+    expect(assignees).toEqual(['other']);
+    expect(title).toBe('[X] trigger: vlt/muse (image B)');
+  });
+
+  it('untracked tasks still work with no context (backward compatible)', () => {
+    const { labels, assignees, body } = buildTaskIssue('X', 'analysis', { product: 'lightcurve', result: '', files: [] });
+    expect(labels).toEqual(['type:analysis', 'cand:X']);
+    expect(assignees).toEqual([]);
+    expect(parseIssueBody(body).data.track).toBeNull();
+  });
+
+  it('observations carry an epochs list', () => {
+    const { body } = buildTaskIssue('X', 'observation', { facility: 'vlt', instrument: 'soxs' });
+    expect(parseIssueBody(body).data.epochs).toEqual([]);
+  });
+});
+
+describe('deepMerge', () => {
+  it('merges nested objects, replaces arrays/scalars, and does not mutate inputs', () => {
+    const base = { image_dates: { A: { detected: 'a', peak: null } }, leads: ['x'], n: 1 };
+    const out = deepMerge(base, { image_dates: { A: { peak: 'p' }, B: { detected: 'b' } }, leads: ['y'] });
+    expect(out).toEqual({ image_dates: { A: { detected: 'a', peak: 'p' }, B: { detected: 'b' } }, leads: ['y'], n: 1 });
+    expect(base.image_dates.A.peak).toBeNull();
+  });
+});
+
+describe('updateCandidateFields', () => {
+  const repo = { owner: 'o', name: 'r' };
+  const candidate = { issue: { number: 7 } };
+
+  it('deep-merges the patch into the fresh body and returns the new data', async () => {
+    const { client, issues } = mockClient({ id: 'X', status: 'lensed_sn', image_dates: { A: { detected: '2026-09-01' } } }, []);
+    const next = await updateCandidateFields(client, repo, candidate, { image_dates: { B: { detected: '2026-09-10' } } });
+    expect(next.image_dates).toEqual({ A: { detected: '2026-09-01' }, B: { detected: '2026-09-10' } });
+    expect(next.status).toBe('lensed_sn');
+    const written = parseIssueBody(issues.update.mock.calls[0][0].body).data;
+    expect(written.image_dates.B.detected).toBe('2026-09-10');
+  });
+
+  it('refuses to change status (that must go through changeCandidateStatus)', async () => {
+    const { client } = mockClient({ id: 'X', status: 'lensed_sn' }, []);
+    await expect(updateCandidateFields(client, repo, candidate, { status: 'post_fade' })).rejects.toThrow(/changeCandidateStatus/);
   });
 });

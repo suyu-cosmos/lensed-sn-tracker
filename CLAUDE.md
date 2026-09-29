@@ -41,7 +41,7 @@ Milestone 4, after data gathering works.
 ```sh
 npm install
 npm run dev       # Vite dev server, http://localhost:5173
-npm test          # vitest run — visibility.test.js, write.test.js
+npm test          # vitest run — visibility, write, rules (tracks), yaml tests
 npm run build     # -> dist/, what .github/workflows/deploy.yml deploys
 npm run preview   # serve the production build locally
 ```
@@ -171,6 +171,13 @@ Cloudflare Worker, per the plan) replaces this without touching
 `src/lib/github.js` or any page — that's *why* it's still a pasted PAT
 today rather than OAuth: the write features were higher-value to build
 first and don't depend on which auth flow hands the app its token.
+
+**Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
+`eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use
+these rather than re-deriving track state, so the §6.2 semantics (derived
+state; untargeted per-image slots never block "done") stay in one place.
+Tests use inline fixtures, never `../lensed-sn-data`, because CI (deploy.yml)
+checks out only this repo.
 
 **Writes go through `src/lib/write.js`, never straight from a page.** It
 owns every title/label/body-shape convention from plan §5.1/§5.2 in one

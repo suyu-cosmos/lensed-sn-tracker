@@ -430,18 +430,28 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
   panel (data-driven), but `post_fade`'s blue pill renders gray, and tracks/new fields are not
   yet read or written by the app.
 
-**Step 3 — app library (lensed-sn-tracker `src/lib/`).**
-- `format.js`/`style.css`: add `blue` to `KNOWN_COLORS` and `.pill.blue`.
-- `rules.js`: `getTrack(rules, id)`, `tracksForStatus(rules, statusId)`,
-  `trackState(track, tasks, candidate)` → `waiting|not_started|active|done` (§6.2 rules),
-  `eligibleImages(track, candidate)` → trailing images with a `detected` date, each flagged
-  targeted/untargeted, `trackInstruments(track, facilities)` → instruments/modes/facilities filter.
-- `write.js`: `buildCandidateIssue` writes the new `time_delays` shape and `image_dates: {}`;
-  `buildTaskIssue` writes `track`, `image`, `role`, `cadence_days`, `until`, `epochs`, adds label
-  `track:<id>`, and sets the assignee from `resolveRole(candidate, role)`; new
-  `updateCandidateFields(client, repo, candidate, patch)` (fetch-fresh → deep-merge → write,
-  returns the new data — same "use the write's own result" rule as everywhere else).
-- Tests for all of the above (`test/rules.test.js` new; extend `test/write.test.js`).
+**Step 3 — app library (lensed-sn-tracker `src/lib/`). [done]**
+- `format.js`/`style.css`: `blue` added to `KNOWN_COLORS`, `--blue`, `.pill.blue`.
+- `rules.js`: `getTrack`, `tracksForStatus`, `tasksForTrack`, `referenceImage`,
+  `eligibleImages(track, candidate, tasks)` (trailing = non-reference images with a `detected`
+  date, flagged `targeted`), `trackState(track, tasks, candidate)` →
+  `waiting|not_started|active|done`, `trackInstruments(track, facilities)` (explicit
+  `instruments:` wins, else `facilities:`/`modes:` filter), and `predictedArrivals(candidate)`
+  → `[{image, date, errDays}]` for undetected images (anchor = reference image's `detected`,
+  else `discovery_date`) — the same arithmetic the Milestone-3 trailing-image alert will use.
+- `write.js`: `buildCandidateIssue` writes the full `time_delays` shape and `image_dates: {}`.
+  `buildTaskIssue(candidateId, type, fields, { rules, candidate, peopleData })` writes
+  `track`/`image`/`role` (role defaults from the track) on every type, `cadence_days`/`until`
+  on triggers and `epochs` on observations, adds `track:<id>`, appends "(image X)" to the
+  title, and returns `assignees` resolved from the role via `resolveRole`. The context is
+  optional, so untracked callers keep working. New `deepMerge` and
+  `updateCandidateFields(client, repo, candidate, patch)` (fetch fresh → deep-merge → write →
+  return new data; refuses `status`, which must go through `changeCandidateStatus`).
+- Tests: `test/rules.test.js` (new, inline fixtures because CI checks out only this repo) and
+  extended `test/write.test.js` — 48 tests total.
+- Nothing in the UI uses these yet (Step 4). Open data questions surfaced by running
+  `trackInstruments` on the real data: should the monitoring tracks exclude HST/JWST (they
+  currently match by mode), and should `lens_followup` be restricted (it has no filter)?
 
 **Step 4 — candidate page (`src/pages/candidate.js`).**
 - "Follow-up tracks" section replacing the flat task table: one card per track of the current

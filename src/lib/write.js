@@ -59,7 +59,14 @@ export function buildCandidateIssue(fields) {
       z_source: fields.zSource ?? null,
       sn_type: fields.snType || 'unknown',
     },
-    time_delays: { predicted: {}, measured: {} },
+    time_delays: {
+      reference_image: 'A',
+      predicted: {},
+      predicted_err: {},
+      measured: {},
+      measured_err: {},
+    },
+    image_dates: {}, // per image { detected, peak, faded } — the event record tracks key off (plan §6.2)
     leads: fields.leads,
     roles_override: {},
     status: fields.status,
@@ -77,8 +84,29 @@ export function buildCandidateIssue(fields) {
   return { title, body, labels };
 }
 
-/** Build the {title, body, labels} for a new sub-issue under an existing candidate. */
-export function buildTaskIssue(candidateId, type, fields) {
+/**
+ * Build the {title, body, labels, assignees} for a new sub-issue under an
+ * existing candidate.
+ *
+ * Track fields (plan §5.2 / §6.2), all optional so untracked tasks still work:
+ * `fields.track` (a rules.yaml track id; also added as label `track:<id>`),
+ * `fields.image` (per-image tracks), `fields.role` (defaults from the track),
+ * plus `cadence_days`/`until` on triggers and `epochs` on observations.
+ *
+ * `context` ({ rules, candidate, peopleData }) is optional: when given, the
+ * role defaults from the track and the assignee is resolved from the role via
+ * `resolveRole` (so a candidate's roles_override wins, as everywhere else).
+ */
+export function buildTaskIssue(candidateId, type, fields, context = {}) {
+  const { rules, candidate, peopleData } = context;
+  const track = fields.track && rules ? (rules.tracks ?? []).find((t) => t.id === fields.track) : null;
+  const role = fields.role || track?.role || null;
+  const trackFields = {
+    track: fields.track || null,
+    image: fields.image || null,
+    role,
+  };
+
   let data;
   let titleSuffix;
 
@@ -86,6 +114,9 @@ export function buildTaskIssue(candidateId, type, fields) {
     case 'trigger':
       data = {
         cand: candidateId,
+        ...trackFields,
+        cadence_days: fields.cadenceDays ?? null, // recurring campaign = ONE issue with a cadence; null = one-off
+        until: fields.until || null,
         facility: fields.facility,
         instrument: fields.instrument,
         mode: fields.mode,
@@ -101,6 +132,7 @@ export function buildTaskIssue(candidateId, type, fields) {
     case 'observation':
       data = {
         cand: candidateId,
+        ...trackFields,
         facility: fields.facility,
         instrument: fields.instrument,
         obs_utc: fields.obsUtc || null,
@@ -108,12 +140,14 @@ export function buildTaskIssue(candidateId, type, fields) {
         conditions: fields.conditions || null,
         data_location: fields.dataLocation || '',
         reduction_status: fields.reductionStatus || 'raw',
+        epochs: fields.epochs ?? [], // recurring campaigns append { obs_utc, filters/setup, conditions } per epoch
       };
       titleSuffix = `observation: ${fields.facility}/${fields.instrument}`;
       break;
     case 'analysis':
       data = {
         cand: candidateId,
+        ...trackFields,
         product: fields.product,
         result: fields.result || '',
         files: fields.files,
@@ -123,6 +157,7 @@ export function buildTaskIssue(candidateId, type, fields) {
     case 'decision':
       data = {
         cand: candidateId,
+        ...trackFields,
         deadline: fields.deadline || null,
         options: fields.options,
       };
@@ -132,12 +167,17 @@ export function buildTaskIssue(candidateId, type, fields) {
       throw new Error(`Unknown task type "${type}"`);
   }
 
-  const title = `[${candidateId}] ${titleSuffix}`;
+  const imageSuffix = fields.image ? ` (image ${fields.image})` : '';
+  const title = `[${candidateId}] ${titleSuffix}${imageSuffix}`;
   const body = stringifyIssueBody(data, '', type);
   const labels = [`type:${type}`, `cand:${candidateId}`];
   if (fields.facility) labels.push(`facility:${fields.facility}`);
+  if (fields.track) labels.push(`track:${fields.track}`);
 
-  return { title, body, labels };
+  const assigneeId = role && peopleData ? resolveRole(candidate ?? {}, role, peopleData).personId : null;
+  const assignees = assigneeId ? [assigneeId] : [];
+
+  return { title, body, labels, assignees };
 }
 
 /**
@@ -234,5 +274,44 @@ export async function changeCandidateStatus(client, dataRepo, candidate, newStat
     await removeLabel(client, dataRepo, candidate.issue.number, name);
   }
 
+  return nextData;
+}
+
+/**
+ * Deep-merge `patch` into `base` without mutating either: plain objects merge
+ * recursively; arrays, scalars and null in `patch` replace the base value.
+ * So `{ image_dates: { B: { detected: '2026-10-01' } } }` sets one date and
+ * keeps every other image/field intact.
+ */
+export function deepMerge(base, patch) {
+  const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (!isPlain(base) || !isPlain(patch)) return patch;
+  const out = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    out[key] = isPlain(value) && isPlain(base[key]) ? deepMerge(base[key], value) : value;
+  }
+  return out;
+}
+
+/**
+ * Generic candidate-field write (e.g. image_dates, time_delays): fetch the
+ * issue fresh, deep-merge `patch` into its YAML data, write the body back,
+ * and return the new data. Callers should assign the returned data onto
+ * `candidate.data` directly rather than refetching — the same "use the
+ * write's own result" rule as changeCandidateStatus (see CLAUDE.md). Status
+ * changes must still go through changeCandidateStatus, which also keeps the
+ * status:* label in sync; this refuses a patch that touches `status`.
+ */
+export async function updateCandidateFields(client, dataRepo, candidate, patch) {
+  if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
+    throw new Error('Use changeCandidateStatus to change status (it also updates the status label).');
+  }
+  const fresh = await getIssue(client, dataRepo, candidate.issue.number);
+  const { data, notes } = parseIssueBody(fresh.body);
+  if (!data) {
+    throw new Error("Could not parse this issue's YAML block; refusing to overwrite it.");
+  }
+  const nextData = deepMerge(data, patch);
+  await updateIssueBody(client, dataRepo, candidate.issue.number, stringifyIssueBody(nextData, notes, 'candidate'));
   return nextData;
 }

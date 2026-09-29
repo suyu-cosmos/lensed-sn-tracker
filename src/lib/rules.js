@@ -71,3 +71,107 @@ export function requiredFieldsFor(rules, statusId) {
 export function vocabulary(rules, name) {
   return rules.vocabularies?.[name] ?? [];
 }
+
+// ---------------------------------------------------------------------------
+// Tracks (plan §6.2): parallel workstreams inside a phase. A track's state is
+// always DERIVED from its tasks and the candidate's image_dates — never stored.
+// ---------------------------------------------------------------------------
+
+export function getTrack(rules, trackId) {
+  return (rules.tracks ?? []).find((t) => t.id === trackId);
+}
+
+/** Track definitions expected in a phase, in rules.yaml order; unknown ids are skipped. */
+export function tracksForStatus(rules, statusId) {
+  return (getStatus(rules, statusId)?.tracks ?? []).map((id) => getTrack(rules, id)).filter(Boolean);
+}
+
+/** Tasks (from loadCandidateDetail) belonging to one track. */
+export function tasksForTrack(track, tasks) {
+  return tasks.filter((t) => t.data?.track === track.id);
+}
+
+/** The image every delay is measured from; defaults to A, matching the plan's convention. */
+export function referenceImage(candidate) {
+  return candidate?.time_delays?.reference_image ?? 'A';
+}
+
+/**
+ * For a `per_image` track: every trailing (non-reference) image that has a
+ * `detected` date, each flagged `targeted` if a task in this track names it.
+ * Eligible-but-untargeted is a normal, complete outcome (plan §6.2) — in
+ * practice only the second-appearing image is usually targeted.
+ */
+export function eligibleImages(track, candidate, tasks = []) {
+  if (!track?.per_image) return [];
+  const ref = referenceImage(candidate);
+  const trackTasks = tasksForTrack(track, tasks);
+  return Object.entries(candidate?.image_dates ?? {})
+    .filter(([image, dates]) => image !== ref && dates?.detected)
+    .map(([image, dates]) => ({
+      image,
+      detected: dates.detected,
+      targeted: trackTasks.some((t) => t.data?.image === image),
+    }))
+    .sort((a, b) => String(a.detected).localeCompare(String(b.detected)));
+}
+
+/**
+ * 'waiting'     — gated on an event (`starts_on`) that hasn't happened yet
+ * 'not_started' — no tasks yet
+ * 'active'      — at least one open task
+ * 'done'        — has tasks and all are closed (untargeted per-image slots never block this)
+ */
+export function trackState(track, tasks, candidate) {
+  const trackTasks = tasksForTrack(track, tasks);
+  if (trackTasks.some((t) => t.issue?.state === 'open')) return 'active';
+  if (trackTasks.length > 0) return 'done';
+  if (track.starts_on === 'image_detected' && eligibleImages({ ...track, per_image: true }, candidate).length === 0) {
+    return 'waiting';
+  }
+  return 'not_started';
+}
+
+/**
+ * Instruments the Add-task form should offer for a track, as
+ * [{ facility, instrument }]. An explicit `instruments:` list
+ * ("<facility>/<instrument>" ids) wins; otherwise filter every instrument
+ * by the track's `facilities:` and `modes:` (either may be absent). No
+ * filters at all means everything is allowed.
+ */
+export function trackInstruments(track, facilities) {
+  const all = facilities.flatMap((facility) => (facility.instruments ?? []).map((instrument) => ({ facility, instrument })));
+  if (track?.instruments?.length) {
+    const wanted = new Set(track.instruments);
+    return all.filter(({ facility, instrument }) => wanted.has(`${facility.id}/${instrument.id}`));
+  }
+  return all.filter(
+    ({ facility, instrument }) =>
+      (!track?.facilities?.length || track.facilities.includes(facility.id)) &&
+      (!track?.modes?.length || (instrument.modes ?? []).some((m) => track.modes.includes(m))),
+  );
+}
+
+/**
+ * Predicted arrival of every image not yet detected, from time_delays and
+ * image_dates: t_ref = reference image's detected date (else discovery_date),
+ * date = t_ref + predicted[X], ± predicted_err[X] days. Returns
+ * [{ image, date: 'YYYY-MM-DD', errDays }] sorted by date; [] if no anchor.
+ * This is the same arithmetic the Milestone-3 trailing-image alert will use.
+ */
+export function predictedArrivals(candidate) {
+  const td = candidate?.time_delays ?? {};
+  const dates = candidate?.image_dates ?? {};
+  const anchor = dates[referenceImage(candidate)]?.detected ?? candidate?.discovery_date;
+  if (!anchor) return [];
+  const t0 = Date.parse(`${String(anchor).slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(t0)) return [];
+  return Object.entries(td.predicted ?? {})
+    .filter(([image, delay]) => Number.isFinite(Number(delay)) && !dates[image]?.detected)
+    .map(([image, delay]) => ({
+      image,
+      date: new Date(t0 + Number(delay) * 86400000).toISOString().slice(0, 10),
+      errDays: td.predicted_err?.[image] ?? null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}

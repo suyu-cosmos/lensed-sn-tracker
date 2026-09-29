@@ -21,7 +21,7 @@ export function formatMinutes(minutes) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-const KNOWN_COLORS = new Set(['gray', 'amber', 'green', 'red']);
+const KNOWN_COLORS = new Set(['gray', 'amber', 'green', 'red', 'blue']);
 
 export function statusPillHtml(status) {
   if (!status) return '<span class="pill unknown">unknown status</span>';
