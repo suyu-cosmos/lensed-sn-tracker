@@ -508,8 +508,8 @@ a person writes it to `roles_override` (plan §4.1 level 1).
 **Also done during M2.5 (user request): phase-relevant roles + in-page role editor.**
 - `rules.yaml`: each status lists `roles:` — the people.yaml roles that matter in that phase.
   New candidate / Awaiting confirmation: coordinator, trigger_coordinator, photometry_lead,
-  spectroscopy_lead (both confirmation routes). Live follow-up: all six. Post-fade:
-  coordinator, trigger_coordinator, lens_modeling_lead, spectroscopy_lead, data_manager.
+  spectroscopy_lead (both confirmation routes). Live follow-up and Post-fade:
+  all six (photometry_lead stays relevant post-fade for additional lens imaging).
   Data complete / False positive: coordinator, data_manager. Unlisted roles still resolve
   normally (§4.1); they're just not emphasised.
 - Candidate page **Roles card**: phase roles up front, others folded under "Not active in this
