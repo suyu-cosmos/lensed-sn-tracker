@@ -44,7 +44,7 @@ function renderRoleOverrides(people) {
   return `
       <details class="role-overrides">
         <summary><h3>Roles for this candidate <span class="muted">(optional — defaults to the group roles)</span></h3></summary>
-        <p class="muted">Only the roles relevant to the chosen starting status are shown — the others become relevant later and can be set on the candidate page (or when changing status). Leave a role on "Group default" to follow people.yaml; choosing a person pins it for this candidate only.</p>
+        <p class="muted">Only the roles relevant to the starting status chosen above are shown — the others become relevant later and can be set on the candidate page (or when changing status). Leave a role on "Group default" to follow people.yaml; choosing a person pins it for this candidate only.</p>
         ${rows}
       </details>`;
 }
@@ -78,10 +78,10 @@ export function render(container, ctx) {
 
       <h3>Ownership</h3>
       <label>Leads (GitHub usernames) * <input name="leads" required placeholder="shsuyu, stefanschuldt" /></label>
-      ${renderRoleOverrides(ctx.people)}
       <label>Status
         <select name="status">${statuses.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultStatus ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
       </label>
+      ${renderRoleOverrides(ctx.people)}
 
       <div class="form-actions">
         <button type="submit">Create candidate</button>
