@@ -413,8 +413,17 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
               rules: ctx.rules,
             })
           : null;
-        const mailtoUrl = buildTriggerMailto({ candidate: candidate.data, facility, instrument, visibilityTonight });
-        bannerHtml = `<p class="card">Created <a href="${issue.html_url}" target="_blank" rel="noreferrer">#${issue.number}</a>. <a href="${mailtoUrl}">✉️ Email ${escapeHtml(facility?.contact?.pi ?? 'the PI')} about this trigger</a></p>`;
+        const { url: mailtoUrl, to, cc } = buildTriggerMailto({
+          candidate: candidate.data,
+          facility,
+          instrument,
+          mode: fields.mode,
+          visibilityTonight,
+          peopleData: ctx.people,
+        });
+        const toName = escapeHtml(to?.name ?? facility?.contact?.pi ?? 'the PI');
+        const ccText = cc.length ? ` (cc: ${cc.map((p) => escapeHtml(p.name)).join(', ')})` : '';
+        bannerHtml = `<p class="card">Created <a href="${issue.html_url}" target="_blank" rel="noreferrer">#${issue.number}</a>. <a href="${mailtoUrl}">✉️ Email ${toName}${ccText} about this trigger</a></p>`;
       }
       if ((issue.assignees ?? []).length === 0) {
         const reminder =

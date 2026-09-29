@@ -163,7 +163,18 @@ owns every title/label/body-shape convention from plan §5.1/§5.2 in one
 place (`buildCandidateIssue`, `buildTaskIssue`, `changeCandidateStatus`,
 `buildTriggerMailto`), on top of the raw REST calls in `src/lib/github.js`
 (`createIssue`, `getIssue`, `updateIssueBody`, `addLabels`, `removeLabel`).
-Two things worth knowing before touching this:
+Three things worth knowing before touching this:
+- **`buildTriggerMailto` resolves its To/CC from `people.yaml`, not a
+  static facility field.** To is the program PI — an instrument's own
+  `pi:` overrides the facility-level `contact.pi` (facilities.yaml), since
+  one facility can host more than one program with a different PI (vlt's
+  SOXS vs. MUSE/FORS2). CC is the group-default lead matching the
+  instrument's mode (`LEAD_ROLE_BY_MODE`: spectroscopy/ifu ->
+  spectroscopy_lead, imaging/nir_imaging -> photometry_lead) plus
+  coordinator, both resolved via `resolveRole` so a candidate's own
+  `roles_override` wins here exactly as it does everywhere else — and
+  deduped against the PI and each other. Every address is that person's
+  own `email:` in `people.yaml`.
 - **Labels auto-create on write**, confirmed against the live API — both
   `issues.create`'s `labels` array and `issues.addLabels` create a label
   that doesn't exist yet (default gray). This is *different* from GitHub's

@@ -8,6 +8,20 @@
 import { getIssue, updateIssueBody, addLabels, removeLabel } from './github.js';
 import { parseIssueBody, stringifyIssueBody } from './yaml.js';
 import { formatUtc } from './format.js';
+import { resolveRole, findPerson } from './rules.js';
+
+// Which group-default role gets CC'd on a trigger's PI email, by the
+// instrument's observing mode — spectroscopy/IFU triggers go to
+// spectroscopy_lead, imaging triggers to photometry_lead. Falls back to
+// spectroscopy_lead for any mode not listed (there's no dedicated lead
+// role for polarimetry yet).
+const LEAD_ROLE_BY_MODE = {
+  spectroscopy: 'spectroscopy_lead',
+  high_resolution_spectroscopy: 'spectroscopy_lead',
+  ifu: 'spectroscopy_lead',
+  imaging: 'photometry_lead',
+  nir_imaging: 'photometry_lead',
+};
 
 export const SN_TYPES = ['unknown', 'Ia', 'II', 'Ibc', 'SLSN', 'other'];
 export const LENS_TYPES = ['galaxy', 'group', 'cluster'];
@@ -133,8 +147,34 @@ export function buildTaskIssue(candidateId, type, fields) {
  * visibility window at this facility, computed by the caller via
  * `nightlyVisibility` and passed in as `visibilityTonight`.
  */
-export function buildTriggerMailto({ candidate, facility, instrument, visibilityTonight }) {
-  const to = facility.contact?.email ?? '';
+/**
+ * Builds the trigger email's recipients and mailto: URL. The "To" is the
+ * program PI — an instrument's own `pi:` overrides the facility-level
+ * `contact.pi` (facilities.yaml), since one facility can host more than
+ * one program (e.g. vlt's SOXS vs. MUSE/FORS2). CC is the relevant
+ * group-default lead for the instrument's mode (LEAD_ROLE_BY_MODE) plus
+ * the coordinator, resolved via `resolveRole` so a candidate's own
+ * `roles_override` still wins exactly as it would anywhere else in the
+ * app. Every address comes from `people.yaml`'s own `email:` field, not a
+ * facility-wide placeholder, so it reflects whoever actually holds that
+ * role today.
+ *
+ * Returns `{ url, to, cc }` — `to`/`cc` are resolved people.yaml entries
+ * (or null/[] if unresolved), for the caller to describe in its own UI
+ * rather than re-deriving the same lookups.
+ */
+export function buildTriggerMailto({ candidate, facility, instrument, mode, visibilityTonight, peopleData }) {
+  const piId = instrument?.pi ?? facility.contact?.pi;
+  const toPerson = findPerson(peopleData, piId) ?? null;
+  const to = toPerson?.email ?? facility.contact?.email ?? '';
+
+  const leadRoleId = LEAD_ROLE_BY_MODE[mode] ?? 'spectroscopy_lead';
+  const ccIds = [resolveRole(candidate, leadRoleId, peopleData).personId, resolveRole(candidate, 'coordinator', peopleData).personId];
+  const ccPeople = [...new Set(ccIds)] // dedupe (e.g. one person holding both roles)
+    .filter((id) => id && id !== piId)
+    .map((id) => findPerson(peopleData, id))
+    .filter(Boolean);
+
   const subject = `ToO request: ${candidate.tns_name || candidate.id} — ${facility.name}/${instrument.name}`;
   const finderChartUrl = `https://aladin.cds.unistra.fr/AladinLite/?target=${candidate.ra_deg}%20${candidate.dec_deg}&fov=0.3&survey=P%2FDSS2%2Fcolor`;
   const windowLine = facility.space_based
@@ -143,7 +183,7 @@ export function buildTriggerMailto({ candidate, facility, instrument, visibility
       ? `Visible tonight ${formatUtc(visibilityTonight.windowStart)} – ${formatUtc(visibilityTonight.windowEnd)}, best altitude ${visibilityTonight.bestAltitudeDeg.toFixed(0)}°, airmass ${visibilityTonight.bestAirmass.toFixed(2)}.`
       : 'Not visible tonight from this facility — check the tracker for the next visible night.';
 
-  const body = [
+  const bodyText = [
     `Candidate: ${candidate.tns_name || candidate.id} (${candidate.id})`,
     `Coordinates (J2000): RA ${candidate.ra_deg}°, Dec ${candidate.dec_deg}°`,
     `Finder chart: ${finderChartUrl}`,
@@ -152,7 +192,10 @@ export function buildTriggerMailto({ candidate, facility, instrument, visibility
     `Requesting: ${instrument.name} on ${facility.name}`,
   ].join('\n');
 
-  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  let url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+  if (ccPeople.length) url += `&cc=${encodeURIComponent(ccPeople.map((p) => p.email).filter(Boolean).join(','))}`;
+
+  return { url, to: toPerson, cc: ccPeople };
 }
 
 /**
