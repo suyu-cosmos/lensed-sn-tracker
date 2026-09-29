@@ -176,6 +176,18 @@ Cloudflare Worker, per the plan) replaces this without touching
 today rather than OAuth: the write features were higher-value to build
 first and don't depend on which auth flow hands the app its token.
 
+**Candidate page layout (Milestone 2.5).** `renderCandidatePage` builds, in
+order: header + Change-status (with the all-images-faded → post_fade *hint*),
+Visibility, Suggested next steps, **Image timeline** (edits `image_dates` via
+`updateCandidateFields`), **Follow-up tracks** (one card per track of the
+current phase + "Other tasks"; phases without tracks fall back to a flat task
+table), Add-task (Track selector first), Observation log, Discussion. Every
+handler re-renders from data it already holds — the image-timeline save uses
+`updateCandidateFields`' return value, add-task merges the created issue —
+never from an immediate refetch. `wireFacilityCascade` takes an options object
+with an `allowed()` getter returning the selected track, and returns
+`{ refresh }` for the track selector to call.
+
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use
 these rather than re-deriving track state, so the §6.2 semantics (derived

@@ -453,18 +453,30 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
   `trackInstruments` on the real data: should the monitoring tracks exclude HST/JWST (they
   currently match by mode), and should `lens_followup` be restricted (it has no filter)?
 
-**Step 4 — candidate page (`src/pages/candidate.js`).**
-- "Follow-up tracks" section replacing the flat task table: one card per track of the current
-  status — label, purposes, derived state, its tasks, and "+ Add task" pre-set to that track.
-  Per-image tracks list eligible images with "+ Add for image X"; untargeted images read
-  "not targeted". Tasks with no/unknown `track` go in an "Other tasks" card.
-- Add-task form: Track selector first; it pre-fills task type, restricts instruments
-  (`trackInstruments`), cadence and role (hence assignee). The existing mode-driven Wavelength
-  band / Images rules still apply.
-- "Image timeline" panel: per image, detected / peak / faded dates editable in place (via
-  `updateCandidateFields`), plus "next image expected ~date ± err" from `time_delays`.
-- Change-status: when every image has a `faded` date, show a hint suggesting `post_fade`
-  (a hint only; never automatic).
+**Step 4 — candidate page (`src/pages/candidate.js`). [done]**
+- **Image timeline** card: one row per known image (reference image, `image_dates`,
+  `time_delays.predicted`, `lens.image_positions`, `lens.n_images`) with editable
+  detected / peak / faded dates, predicted arrival (± err) for undetected images, a
+  "Next image expected" summary, and an "add…" row for a new image label. Saves via
+  `updateCandidateFields` and assigns the returned data onto `candidate.data`.
+- **Follow-up tracks**: one card per track of the current phase — label, derived state badge,
+  owner (resolved from the track role), cadence, purposes, its tasks, and "+ Add task to this
+  track". Per-image tracks list each eligible image as targeted / not targeted with
+  "+ Add for image X" (or "waiting for a trailing image"). Tasks not in the phase's tracks go in
+  an "Other tasks" card with a Track column. Phases without tracks keep the flat task table.
+- **Add-task form**: Track selector first (tracks of the current phase, or untracked). Choosing
+  one sets the task type, the default cadence, restricts facility → instrument → mode via
+  `trackInstruments` + the track's `modes`, shows "Will be assigned to …", and for per-image
+  tracks asks for the target image (required). New trigger fields: Cadence (days) and Until.
+  The task is created with the role-resolved assignee; if GitHub drops it (e.g. a placeholder
+  username in people.yaml), a precise warning says so.
+- **Change-status**: a hint appears (never automatic) when every known image has a `faded`
+  date and `post_fade` is a declared transition.
+- `wireFacilityCascade` now takes an options object and an `allowed()` track getter, returns
+  `{ refresh }`. Verified with a throwaway jsdom test against the real YAML (track cards and
+  states, early-phase → only vlt/muse/ifu, saving image B enables "+ Add for image B", the
+  per-image trigger's labels/assignee/title, post-fade hint, flat table in untracked phases);
+  not committed because it needs `../lensed-sn-data` and jsdom.
 
 **Step 5 — dashboard (`src/pages/dashboard.js`).**
 - Per-row track indicators for the current phase (e.g. Phot ● Spec ● Space ○ Early-phase ⏳).
