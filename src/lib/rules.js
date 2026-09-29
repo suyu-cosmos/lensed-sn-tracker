@@ -267,3 +267,12 @@ export function newlyRelevantRoles(rules, fromId, toId, peopleData) {
   const before = new Set(rolesForStatus(rules, fromId, peopleData));
   return rolesForStatus(rules, toId, peopleData).filter((role) => !before.has(role));
 }
+
+/**
+ * People offered in role/assignee pickers: everyone except entries marked
+ * `assignable: false` in people.yaml (e.g. the dev account), but always
+ * keeping `keepId` so a picker never hides the value it currently holds.
+ */
+export function assignablePeople(peopleData, keepId = null) {
+  return (peopleData?.people ?? []).filter((p) => p.assignable !== false || p.id === keepId);
+}

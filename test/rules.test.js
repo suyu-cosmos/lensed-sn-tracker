@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  assignablePeople,
   rolesForStatus,
   newlyRelevantRoles,
   isTerminal,
@@ -206,5 +207,15 @@ describe('phase-relevant roles', () => {
   it('newlyRelevantRoles is what confirmation should prompt for', () => {
     expect(newlyRelevantRoles(r, 'new_candidate', 'lensed_sn', people)).toEqual(['lens_modeling_lead', 'data_manager']);
     expect(newlyRelevantRoles(r, 'lensed_sn', 'new_candidate', people)).toEqual([]);
+  });
+});
+
+describe('assignablePeople', () => {
+  const people = { people: [{ id: 'dev', assignable: false }, { id: 'a' }, { id: 'b', assignable: true }] };
+  it('leaves out assignable: false entries', () => {
+    expect(assignablePeople(people).map((p) => p.id)).toEqual(['a', 'b']);
+  });
+  it("still includes one if it's the value a picker currently holds", () => {
+    expect(assignablePeople(people, 'dev').map((p) => p.id)).toEqual(['dev', 'a', 'b']);
   });
 });

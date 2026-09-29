@@ -27,6 +27,7 @@ import {
   referenceImage,
   rolesForStatus,
   newlyRelevantRoles,
+  assignablePeople,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue } from '../lib/github.js';
@@ -105,7 +106,7 @@ function roleLine(data, people, roleId) {
 function roleSelect(name, roleId, people, currentOverride) {
   const holderId = people.roles?.[roleId]?.holder;
   const holder = holderId ? findPerson(people, holderId)?.name ?? holderId : 'unassigned';
-  const options = (people.people ?? [])
+  const options = assignablePeople(people, currentOverride)
     .map((p) => `<option value="${escapeHtml(p.id)}" ${p.id === currentOverride ? 'selected' : ''}>${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`)
     .join('');
   return `<select name="${escapeHtml(name)}"><option value="" ${currentOverride ? '' : 'selected'}>Group default (${escapeHtml(holder)})</option>${options}</select>`;

@@ -5,7 +5,7 @@
 
 import { createIssue } from '../lib/github.js';
 import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
-import { activeStatuses, findPerson, rolesForStatus } from '../lib/rules.js';
+import { activeStatuses, findPerson, rolesForStatus, assignablePeople } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
 import { parseIssueBody } from '../lib/yaml.js';
 import { navigate } from '../router.js';
@@ -26,7 +26,7 @@ function optionEls(values, labels = values, selected = null) {
 function renderRoleOverrides(people) {
   const roles = Object.entries(people.roles ?? {});
   if (!roles.length) return '';
-  const everyone = people.people ?? [];
+  const everyone = assignablePeople(people);
   const rows = roles
     .map(([roleId, role]) => {
       const holder = role.holder ? findPerson(people, role.holder)?.name ?? role.holder : 'unassigned';
@@ -76,7 +76,7 @@ export function render(container, ctx) {
       <label>Source redshift <input name="zSource" type="number" step="any" /></label>
       <label>SN type <select name="snType">${optionEls(SN_TYPES, SN_TYPES, 'unknown')}</select></label>
 
-      <h3>Ownership</h3>
+      <h3>Status &amp; people's roles</h3>
       <label>Leads (GitHub usernames) * <input name="leads" required placeholder="shsuyu, stefanschuldt" /></label>
       <label>Status
         <select name="status">${statuses.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultStatus ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
