@@ -215,3 +215,5 @@ table.compact input[name="newImage"] { width: 4.5rem; }
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
 }
+.move-cell { white-space: nowrap; }
+.move-cell select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.85rem; }

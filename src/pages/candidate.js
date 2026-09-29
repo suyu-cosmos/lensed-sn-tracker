@@ -34,6 +34,7 @@ import {
   buildTriggerMailto,
   changeCandidateStatus,
   updateCandidateFields,
+  setTaskTrack,
   TASK_TYPES,
   REDUCTION_STATUSES,
   ANALYSIS_PRODUCTS,
@@ -110,6 +111,16 @@ function renderRoles(candidateData, people) {
  */
 function renderTasks(tasks, opts = {}) {
   if (!tasks.length) return '<p class="muted">No tasks yet.</p>';
+  // opts.moveTo: tracks a task can be refiled into (per-image tracks need a
+  // target image, so they're only offered for tasks that already name one).
+  const moveCell = (t) => {
+    const choices = (opts.moveTo ?? []).filter((tr) => tr.id !== t.data?.track && (!tr.per_image || t.data?.image));
+    if (!t.data || !choices.length) return '<td class="muted">—</td>';
+    return `<td class="move-cell"><select data-move-select="${t.issue.number}"><option value="">move to…</option>${optionEls(
+      choices.map((tr) => tr.id),
+      choices.map((tr) => tr.label ?? tr.id),
+    )}</select> <button type="button" class="linklike" data-move-task="${t.issue.number}">Move</button></td>`;
+  };
   const trackLabel = (id) => (id ? opts.rules?.tracks?.find((t) => t.id === id)?.label ?? id : '—');
   const rows = tasks
     .map(
@@ -121,12 +132,13 @@ function renderTasks(tasks, opts = {}) {
         ${opts.image ? `<td>${escapeHtml(t.data?.image ?? '—')}</td>` : ''}
         <td>${escapeHtml(t.issue.state)}</td>
         <td>${escapeHtml((t.issue.assignees ?? []).map((a) => a.login).join(', ') || '—')}</td>
+        ${opts.moveTo ? moveCell(t) : ''}
       </tr>`,
     )
     .join('');
   return `<div class="table-scroll"><table><thead><tr><th>Task</th><th>Type</th>${opts.track ? '<th>Track</th>' : ''}${
     opts.image ? '<th>Image</th>' : ''
-  }<th>State</th><th>Assignees</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }<th>State</th><th>Assignees</th>${opts.moveTo ? '<th>Move</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // ---------- image timeline (plan §5.1 image_dates) ----------
@@ -199,6 +211,9 @@ function renderImageTimeline(data) {
 
 // ---------- follow-up tracks (plan §6.2) ----------
 
+// Explicit "no track" choice in the Add-task Track select (vs. not chosen yet).
+const UNTRACKED = '__untracked';
+
 const TRACK_STATE_LABEL = { waiting: 'waiting for event', not_started: 'not started', active: 'active', done: 'done' };
 
 function renderTrackCard(track, data, tasks, people) {
@@ -250,7 +265,7 @@ function renderTrackSection(ctx, data, tasks) {
     <div class="track-grid">${tracks.map((track) => renderTrackCard(track, data, tasks, ctx.people)).join('')}</div>
     ${
       other.length
-        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or from a track that isn't part of this phase.</p>${renderTasks(other, { track: true, rules: ctx.rules })}</div>`
+        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or from a track that isn't part of this phase. Use "move to…" to file a task under one of this phase's tracks.</p>${renderTasks(other, { track: true, rules: ctx.rules, moveTo: tracks })}<span id="move-task-error" class="error"></span></div>`
         : ''
     }`;
 }
@@ -335,11 +350,12 @@ function renderAddTask(facilities, tracks) {
   const trackSelect = tracks.length
     ? `<label>Track
           <select name="track">
-            <option value="">— none (untracked) —</option>
+            <option value="" selected>— choose a track —</option>
             ${optionEls(
               tracks.map((t) => t.id),
               tracks.map((t) => t.label ?? t.id),
             )}
+            <option value="${UNTRACKED}">Other (untracked)</option>
           </select>
         </label>
         <label data-role="image-wrap" hidden>Target image <select name="image"></select></label>
@@ -537,7 +553,8 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
   const errorEl = form.querySelector('#add-task-error');
   const mailtoEl = container.querySelector('#trigger-mailto');
 
-  const currentTrack = () => (trackSelect?.value ? ctx.rules.tracks?.find((t) => t.id === trackSelect.value) ?? null : null);
+  const currentTrack = () =>
+    trackSelect?.value && trackSelect.value !== UNTRACKED ? ctx.rules.tracks?.find((t) => t.id === trackSelect.value) ?? null : null;
 
   const triggerCascade = wireFacilityCascade({
     facilities,
@@ -589,7 +606,11 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
     }
     if (trackHint) {
       if (!track?.role) {
-        trackHint.textContent = track ? '' : 'Untracked task — no default owner.';
+        trackHint.textContent = !trackSelect.value
+          ? 'Choose the follow-up track this task belongs to (or "Other (untracked)").'
+          : track
+            ? ''
+            : 'Untracked task — it will be listed under "Other tasks", with no default owner.';
       } else {
         const { personId } = resolveRole(candidate.data, track.role, ctx.people);
         const name = personId ? findPerson(ctx.people, personId)?.name ?? personId : 'nobody (role unassigned)';
@@ -620,6 +641,10 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
     const type = typeSelect.value;
     const values = Object.fromEntries(new FormData(form).entries());
     const candidateId = candidate.data.id;
+    if (trackSelect && !trackSelect.value) {
+      errorEl.textContent = 'Choose a track first (or "Other (untracked)").';
+      return;
+    }
     const track = currentTrack();
     const image = track?.per_image ? values.image || null : null;
     if (track?.per_image && !image) {
@@ -732,6 +757,31 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
       errorEl.textContent = `Could not create task: ${err.message}`;
       submitBtn.disabled = false;
     }
+  });
+}
+
+function wireMoveToTrack(container, ctx, candidate, tasks, comments) {
+  const errorEl = container.querySelector('#move-task-error');
+  container.querySelectorAll('[data-move-task]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const number = Number(btn.dataset.moveTask);
+      const trackId = container.querySelector(`[data-move-select="${number}"]`)?.value;
+      if (!trackId) {
+        if (errorEl) errorEl.textContent = 'Pick a track to move the task into.';
+        return;
+      }
+      const task = tasks.find((t) => t.issue.number === number);
+      btn.disabled = true;
+      try {
+        const moved = await setTaskTrack(ctx.client, ctx.config.dataRepo, task, trackId, ctx.rules);
+        // Use the write's own result rather than refetching (CLAUDE.md).
+        const nextTasks = tasks.map((t) => (t.issue.number === number ? moved : t));
+        renderCandidatePage(container, ctx, candidate, nextTasks, comments);
+      } catch (err) {
+        if (errorEl) errorEl.textContent = `Could not move #${number}: ${err.message}`;
+        btn.disabled = false;
+      }
+    });
   });
 }
 
@@ -859,6 +909,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
   if (data) {
     wireChangeStatusForm(container, ctx, candidate, rules);
     wireImageTimelineForm(container, ctx, candidate, tasks, comments);
+    wireMoveToTrack(container, ctx, candidate, tasks, comments);
     wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments);
   }
 }

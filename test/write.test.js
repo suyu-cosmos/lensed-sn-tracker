@@ -12,6 +12,7 @@ import {
   changeCandidateStatus,
   deepMerge,
   updateCandidateFields,
+  setTaskTrack,
 } from '../src/lib/write.js';
 import { parseIssueBody, stringifyIssueBody } from '../src/lib/yaml.js';
 
@@ -330,5 +331,44 @@ describe('updateCandidateFields', () => {
   it('refuses to change status (that must go through changeCandidateStatus)', async () => {
     const { client } = mockClient({ id: 'X', status: 'lensed_sn' }, []);
     await expect(updateCandidateFields(client, repo, candidate, { status: 'post_fade' })).rejects.toThrow(/changeCandidateStatus/);
+  });
+});
+
+describe('setTaskTrack', () => {
+  const repo = { owner: 'o', name: 'r' };
+  const rules = { tracks: [{ id: 'phot_monitoring', role: 'photometry_lead' }, { id: 'early', per_image: true }] };
+
+  function taskClient(data, labelNames) {
+    const issues = {
+      get: vi.fn(async () => ({ data: { body: stringifyIssueBody(data, '', 'trigger'), labels: labelNames.map((name) => ({ name })) } })),
+      update: vi.fn(async () => ({})),
+      addLabels: vi.fn(async () => ({})),
+      removeLabel: vi.fn(async () => ({})),
+    };
+    return { client: { rest: { issues } }, issues };
+  }
+  const task = { issue: { number: 18, labels: [] }, type: 'trigger' };
+
+  it('files an untracked task into a track: body track+role, track label, returns the updated task', async () => {
+    const { client, issues } = taskClient({ cand: 'X', track: null, role: null, facility: 'mpg22' }, ['type:trigger', 'cand:X']);
+    const moved = await setTaskTrack(client, repo, task, 'phot_monitoring', rules);
+    expect(moved.data).toMatchObject({ track: 'phot_monitoring', role: 'photometry_lead', facility: 'mpg22' });
+    expect(parseIssueBody(issues.update.mock.calls[0][0].body).data.track).toBe('phot_monitoring');
+    expect(issues.addLabels).toHaveBeenCalledWith(expect.objectContaining({ labels: ['track:phot_monitoring'] }));
+    expect(issues.removeLabel).not.toHaveBeenCalled();
+    expect(moved.issue.labels.map((l) => l.name)).toEqual(['type:trigger', 'cand:X', 'track:phot_monitoring']);
+  });
+
+  it('removes the old track label when moving between tracks, and keeps an existing role', async () => {
+    const { client, issues } = taskClient({ cand: 'X', track: 'old', role: 'coordinator' }, ['track:old']);
+    const moved = await setTaskTrack(client, repo, task, 'phot_monitoring', rules);
+    expect(moved.data.role).toBe('coordinator');
+    expect(issues.removeLabel.mock.calls.map(([a]) => a.name)).toEqual(['track:old']);
+  });
+
+  it('refuses a per-image track without a target image, and unknown tracks', async () => {
+    const { client } = taskClient({ cand: 'X' }, []);
+    await expect(setTaskTrack(client, repo, task, 'early', rules)).rejects.toThrow(/target image/);
+    await expect(setTaskTrack(client, repo, task, 'nope', rules)).rejects.toThrow(/Unknown track/);
   });
 });

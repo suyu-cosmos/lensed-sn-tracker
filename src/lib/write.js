@@ -315,3 +315,35 @@ export async function updateCandidateFields(client, dataRepo, candidate, patch) 
   await updateIssueBody(client, dataRepo, candidate.issue.number, stringifyIssueBody(nextData, notes, 'candidate'));
   return nextData;
 }
+
+/**
+ * Move an existing task into a track (e.g. one filed as untracked by
+ * mistake, or created before tracks existed): fetch fresh, set `track`
+ * (and `role` from the track if the task has none), add `track:<id>`,
+ * remove any other `track:*` label, and return the updated task entry
+ * ({ issue, type, data, notes }) for the caller to render directly — the
+ * same "use the write's own result" rule as everywhere else (CLAUDE.md).
+ * Per-image tracks need a target image; pass `image` or have one already.
+ */
+export async function setTaskTrack(client, dataRepo, task, trackId, rules, image = null) {
+  const track = (rules.tracks ?? []).find((t) => t.id === trackId);
+  if (!track) throw new Error(`Unknown track "${trackId}".`);
+  const fresh = await getIssue(client, dataRepo, task.issue.number);
+  const { data, notes } = parseIssueBody(fresh.body);
+  if (!data) throw new Error("Could not parse this issue's YAML block; refusing to overwrite it.");
+  const targetImage = image || data.image || null;
+  if (track.per_image && !targetImage) throw new Error(`"${track.label ?? track.id}" needs a target image.`);
+
+  const nextData = { ...data, track: trackId, image: targetImage, role: data.role || track.role || null };
+  await updateIssueBody(client, dataRepo, task.issue.number, stringifyIssueBody(nextData, notes, task.type));
+
+  const newLabel = `track:${trackId}`;
+  await addLabels(client, dataRepo, task.issue.number, [newLabel]);
+  const labelNames = (fresh.labels ?? []).map(labelName);
+  const stale = labelNames.filter((name) => name.startsWith('track:') && name !== newLabel);
+  if (data.track && data.track !== trackId) stale.push(`track:${data.track}`);
+  for (const name of new Set(stale)) await removeLabel(client, dataRepo, task.issue.number, name);
+
+  const labels = [...labelNames.filter((n) => !n.startsWith('track:')), newLabel].map((name) => ({ name }));
+  return { ...task, issue: { ...task.issue, labels }, data: nextData, notes };
+}
