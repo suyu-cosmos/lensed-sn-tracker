@@ -188,3 +188,65 @@ export function predictedArrivals(candidate) {
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard summaries (plan §8 M2.5 Step 5). Pure: take the candidate's
+// parsed data + its tasks (from loadCandidateDetail) and derive everything.
+// ---------------------------------------------------------------------------
+
+export function isTerminal(rules, statusId) {
+  return Boolean(getStatus(rules, statusId)?.terminal);
+}
+
+/** One chip per track of the candidate's current phase: { track, short, state }. */
+export function trackIndicators(rules, candidate, tasks) {
+  return tracksForStatus(rules, candidate?.status).map((track) => ({
+    track,
+    short: track.short ?? track.label ?? track.id,
+    state: trackState(track, tasks, candidate),
+  }));
+}
+
+/** The date a task is "due" by, for ordering: requested date, else deadline, else scheduled time. */
+export function taskDueDate(task) {
+  return task.data?.requested_date || task.data?.deadline || task.data?.scheduled_utc || null;
+}
+
+/**
+ * The single most useful next action for a candidate, as { text, kind }:
+ * 1. 'task'     — earliest-due open task (prefixed with its track's short name)
+ * 2. 'image'    — a trailing image eligible for a per-image track but not targeted
+ * 3. 'track'    — a track of this phase that hasn't started (not merely waiting)
+ * 4. 'task'     — any other open task
+ * 5. 'step'     — the phase's first next_step from rules.yaml
+ */
+export function nextAction(rules, candidate, tasks) {
+  const shortFor = (trackId) => {
+    const track = getTrack(rules, trackId);
+    return track ? track.short ?? track.label ?? track.id : null;
+  };
+  const withTrack = (task, suffix = '') => {
+    const short = shortFor(task.data?.track);
+    return `${short ? `[${short}] ` : ''}${task.issue.title}${suffix}`;
+  };
+
+  const open = tasks.filter((t) => t.issue?.state === 'open');
+  const dated = open
+    .map((task) => ({ task, due: taskDueDate(task) }))
+    .filter((t) => t.due)
+    .sort((a, b) => String(a.due).localeCompare(String(b.due)));
+  if (dated.length) return { kind: 'task', text: withTrack(dated[0].task, ` (due ${dated[0].due})`) };
+
+  const phaseTracks = tracksForStatus(rules, candidate?.status);
+  for (const track of phaseTracks) {
+    const untargeted = eligibleImages(track, candidate, tasks).find((e) => !e.targeted);
+    if (untargeted) return { kind: 'image', text: `${track.short ?? track.label ?? track.id}: image ${untargeted.image} detected — not targeted yet` };
+  }
+  const notStarted = phaseTracks.find((track) => trackState(track, tasks, candidate) === 'not_started');
+  if (notStarted) return { kind: 'track', text: `Start ${notStarted.label ?? notStarted.id}` };
+
+  if (open.length) return { kind: 'task', text: withTrack(open[0]) };
+
+  const [firstStep] = nextStepsFor(rules, candidate?.status);
+  return { kind: 'step', text: firstStep ?? '—' };
+}

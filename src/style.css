@@ -217,3 +217,26 @@ table.compact input[name="newImage"] { width: 4.5rem; }
 }
 .move-cell { white-space: nowrap; }
 .move-cell select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.85rem; }
+
+/* ---- Milestone 2.5 Step 5: dashboard ---- */
+.dashboard-controls { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+label.inline-check { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; font-weight: 600; color: var(--text); }
+label.inline-check input { display: inline-block; width: auto; margin: 0; }
+.track-chips { white-space: normal; }
+.track-chip {
+  display: inline-block;
+  margin: 0 0.15rem 0.2rem 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--muted);
+  cursor: default;
+}
+.track-chip.state-active { border-color: var(--green); color: var(--green); font-weight: 600; }
+.track-chip.state-done { border-color: var(--green); color: var(--green); }
+.track-chip.state-waiting { border-color: var(--amber); color: var(--amber); }
+tr.finished td { opacity: 0.6; }
+.next-action.action-image, .next-action.action-track { font-weight: 600; }
+.legend { font-size: 0.8rem; margin-top: 0.5rem; }

@@ -485,12 +485,20 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
   per-image trigger's labels/assignee/title, post-fade hint, flat table in untracked phases);
   not committed because it needs `../lensed-sn-data` and jsdom.
 
-**Step 5 — dashboard (`src/pages/dashboard.js`).**
-- Per-row track indicators for the current phase (e.g. Phot ● Spec ● Space ○ Early-phase ⏳).
-- "Hide terminal statuses" toggle, on by default (`activeStatuses` is currently only used by
-  the New-candidate form).
-- Next action becomes track-aware (earliest due open task across tracks, else the phase's first
-  `next_step`).
+**Step 5 — dashboard (`src/pages/dashboard.js`). [done]**
+- **Tracks** column: one chip per track of the candidate's current phase — ● active,
+  ○ not started, ⏳ waiting for event, ✓ done — using each track's new optional `short:` name
+  in `rules.yaml` (Phot, Spec, Space, Early-phase, Lens; falls back to `label`); hover shows the
+  full label and state. Phases without tracks show "—".
+- **Show finished candidates** toggle, off by default: terminal-status candidates
+  (`data_complete`, `false_positive`) are hidden with a "N finished hidden" note; unknown
+  statuses are never hidden. The choice is remembered per browser (`localStorage`).
+- **Next action** (`nextAction` in `rules.js`, pure + tested), in priority order: earliest-due
+  open task (tagged with its track's short name) → a trailing image eligible for a per-image
+  track but not targeted → a phase track not yet started ("Start …") → any other open task →
+  the phase's first `next_step`.
+- Helpers `isTerminal`, `trackIndicators`, `taskDueDate`, `nextAction` in `rules.js`; tests in
+  `test/rules.test.js` (61 total). Checked with a throwaway jsdom test against the real YAML.
 
 **Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
 

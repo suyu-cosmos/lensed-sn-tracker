@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  isTerminal,
+  trackIndicators,
+  nextAction,
   isBackwardTransition,
   tracksForStatus,
   trackState,
@@ -139,5 +142,47 @@ describe('isBackwardTransition', () => {
   });
   it('is false for unknown ids rather than guessing', () => {
     expect(isBackwardTransition(r, 'nope', 'lensed_sn')).toBe(false);
+  });
+});
+
+describe('dashboard summaries', () => {
+  const r = {
+    statuses: [
+      { id: 'lensed_sn', tracks: ['phot', 'early'], next_steps: ['Start monitoring'] },
+      { id: 'data_complete', terminal: true, next_steps: ['Close tasks'] },
+    ],
+    tracks: [
+      { id: 'phot', label: 'Photometric monitoring', short: 'Phot' },
+      { id: 'early', label: 'Early-phase spec', short: 'Early', starts_on: 'image_detected', per_image: true },
+    ],
+  };
+  const cand = { status: 'lensed_sn', image_dates: { A: { detected: '2026-09-01' } } };
+  const t = (track, state, data = {}) => ({ issue: { state, title: `task-${track}` }, data: { track, ...data } });
+
+  it('isTerminal reads rules.yaml', () => {
+    expect(isTerminal(r, 'data_complete')).toBe(true);
+    expect(isTerminal(r, 'lensed_sn')).toBe(false);
+    expect(isTerminal(r, 'unknown')).toBe(false);
+  });
+
+  it('trackIndicators gives one chip per phase track with its derived state', () => {
+    expect(trackIndicators(r, cand, [t('phot', 'open')]).map((c) => `${c.short}:${c.state}`)).toEqual(['Phot:active', 'Early:waiting']);
+  });
+
+  it('nextAction prefers the earliest-due open task, tagged with its track', () => {
+    const tasks = [t('phot', 'open', { requested_date: '2026-10-05' }), t('phot', 'open', { requested_date: '2026-10-01' })];
+    tasks[1].issue.title = 'GROND';
+    expect(nextAction(r, cand, tasks)).toEqual({ kind: 'task', text: '[Phot] GROND (due 2026-10-01)' });
+  });
+
+  it('then an eligible-but-untargeted image, then a not-started track', () => {
+    const withB = { ...cand, image_dates: { ...cand.image_dates, B: { detected: '2026-09-20' } } };
+    expect(nextAction(r, withB, [t('phot', 'open')])).toEqual({ kind: 'image', text: 'Early: image B detected — not targeted yet' });
+    expect(nextAction(r, cand, [])).toEqual({ kind: 'track', text: 'Start Photometric monitoring' });
+  });
+
+  it('falls back to an open undated task, then the phase next_step', () => {
+    expect(nextAction(r, cand, [t('phot', 'open')])).toEqual({ kind: 'task', text: '[Phot] task-phot' });
+    expect(nextAction(r, { status: 'data_complete' }, [])).toEqual({ kind: 'step', text: 'Close tasks' });
   });
 });
