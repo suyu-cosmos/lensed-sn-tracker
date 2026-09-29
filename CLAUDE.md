@@ -190,8 +190,15 @@ Two things worth knowing before touching this:
     — re-fetching and replacing `ctx.candidates`' contents in place — since
     this hasn't shown the same lag and it's simpler than hand-patching the
     changed fields.
-  - Adding a task needs neither, since `loadCandidateDetail` always
-    re-fetches sub-issues fresh regardless.
+  - **After adding a task**, the *same* race hits `loadCandidateDetail`'s
+    `listCandidateSubIssues` call (also label-filtered) — this bit us for
+    real (a just-created trigger issue didn't show up in "Tasks" until a
+    full page reload). Fixed the same way: `wireAddTaskForm` calls
+    `loadCandidateDetail` once, and if the task it just created isn't in
+    the returned list yet, merges it in itself via
+    `buildTaskFromIssue(issue)` (`src/lib/data.js`) before rendering. This
+    superseded an earlier (wrong) note here claiming adding a task needed
+    no such handling — it does.
 
 ## Config
 

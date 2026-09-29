@@ -35,6 +35,13 @@ export async function loadAppData(token) {
   return { client, config, facilities, people, rules, candidates };
 }
 
+/** Build one {issue, type, data, notes} task entry from a raw GitHub issue. */
+export function buildTaskFromIssue(issue) {
+  const { data, notes } = parseIssueBody(issue.body);
+  const typeLabel = issue.labels.map(labelName).find((l) => l.startsWith('type:'));
+  return { issue, type: typeLabel?.slice('type:'.length) ?? 'unknown', data, notes };
+}
+
 /** Sub-issues (tasks) and threaded comments for one candidate, fetched on demand. */
 export async function loadCandidateDetail(client, candidate) {
   const { dataRepo } = config;
@@ -45,11 +52,7 @@ export async function loadCandidateDetail(client, candidate) {
     listComments(client, dataRepo, candidate.issue.number),
   ]);
 
-  const tasks = subIssues.map((issue) => {
-    const { data, notes } = parseIssueBody(issue.body);
-    const typeLabel = issue.labels.map(labelName).find((l) => l.startsWith('type:'));
-    return { issue, type: typeLabel?.slice('type:'.length) ?? 'unknown', data, notes };
-  });
+  const tasks = subIssues.map(buildTaskFromIssue);
 
   return { tasks, comments };
 }

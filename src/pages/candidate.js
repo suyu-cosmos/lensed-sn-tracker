@@ -8,7 +8,7 @@
 // separation) rather than a plotted altitude curve — the same numbers a
 // curve would be read off of.
 
-import { loadCandidateDetail, facilityById, refreshCandidates } from '../lib/data.js';
+import { loadCandidateDetail, facilityById, refreshCandidates, buildTaskFromIssue } from '../lib/data.js';
 import { getStatus, resolveAllRoles, findPerson, nextStepsFor, transitionsFor, requiredFieldsFor, vocabulary } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue } from '../lib/github.js';
@@ -396,11 +396,10 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
       const { title, body, labels } = buildTaskIssue(candidateId, type, fields);
       const issue = await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels });
 
-      // render() below replaces the whole container, including this form,
-      // so build the mailto banner's HTML now but only inject it into the
-      // DOM *after* re-rendering (into the fresh #trigger-mailto element) —
+      // Build the banner HTML now but only inject it into the DOM *after*
+      // re-rendering below (into the fresh #trigger-mailto element) —
       // otherwise it would be wiped out the instant it appeared.
-      let mailtoBannerHtml = '';
+      let bannerHtml = '';
       if (type === 'trigger') {
         const facility = facilityById(facilities, fields.facility);
         const instrument = facility?.instruments?.find((i) => i.id === fields.instrument);
@@ -415,13 +414,28 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
             })
           : null;
         const mailtoUrl = buildTriggerMailto({ candidate: candidate.data, facility, instrument, visibilityTonight });
-        mailtoBannerHtml = `<p class="card">Created <a href="${issue.html_url}" target="_blank" rel="noreferrer">#${issue.number}</a>. <a href="${mailtoUrl}">✉️ Email ${escapeHtml(facility?.contact?.pi ?? 'the PI')} about this trigger</a></p>`;
+        bannerHtml = `<p class="card">Created <a href="${issue.html_url}" target="_blank" rel="noreferrer">#${issue.number}</a>. <a href="${mailtoUrl}">✉️ Email ${escapeHtml(facility?.contact?.pi ?? 'the PI')} about this trigger</a></p>`;
+      }
+      if ((issue.assignees ?? []).length === 0) {
+        const reminder =
+          type === 'trigger'
+            ? 'No assignee is set on this task — please email the PI (above) and assign someone responsible for the follow-up.'
+            : "No assignee is set on this task yet — consider assigning someone so it doesn't get lost.";
+        bannerHtml += `<p class="card unassigned">⚠️ ${escapeHtml(reminder)}</p>`;
       }
 
-      await render(container, ctx, { id: candidateId });
-      if (mailtoBannerHtml) {
+      // loadCandidateDetail's label-filtered list has the same brief
+      // propagation lag right after creation as the new-candidate case
+      // (see CLAUDE.md) — merge the task we just made in ourselves rather
+      // than trusting the refetch to already include it.
+      const { tasks, comments } = await loadCandidateDetail(ctx.client, candidate);
+      if (!tasks.some((t) => t.issue.number === issue.number)) {
+        tasks.unshift(buildTaskFromIssue(issue));
+      }
+      renderCandidatePage(container, ctx, candidate, tasks, comments);
+      if (bannerHtml) {
         const freshMailtoEl = container.querySelector('#trigger-mailto');
-        if (freshMailtoEl) freshMailtoEl.innerHTML = mailtoBannerHtml;
+        if (freshMailtoEl) freshMailtoEl.innerHTML = bannerHtml;
       }
     } catch (err) {
       errorEl.textContent = `Could not create task: ${err.message}`;
@@ -431,7 +445,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
 }
 
 export async function render(container, ctx, params) {
-  const { candidates, facilities, people, rules, client } = ctx;
+  const { candidates, client } = ctx;
   const candidate = findCandidate(candidates, params.id);
 
   if (!candidate) {
@@ -440,10 +454,21 @@ export async function render(container, ctx, params) {
   }
 
   container.innerHTML = '<p class="muted">Loading candidate…</p>';
+  const { tasks, comments } = await loadCandidateDetail(client, candidate);
+  renderCandidatePage(container, ctx, candidate, tasks, comments);
+}
 
+/**
+ * The actual DOM build + wiring, split out from `render()` so a caller
+ * that already knows the full task list (e.g. wireAddTaskForm, right
+ * after creating one) can render it directly instead of going through
+ * another `loadCandidateDetail` — see the race-condition note on
+ * `listCandidateSubIssues` where this is called.
+ */
+function renderCandidatePage(container, ctx, candidate, tasks, comments) {
+  const { facilities, people, rules } = ctx;
   const data = candidate.data;
   const status = data ? getStatus(rules, data.status) : null;
-  const { tasks, comments } = await loadCandidateDetail(client, candidate);
 
   const rolesSection = data
     ? `<div class="card"><h2>Roles</h2><ul class="next-steps">${renderRoles(data, people)}</ul></div>`
