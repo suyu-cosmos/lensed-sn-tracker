@@ -59,43 +59,62 @@ export async function listCandidateSubIssues(client, { owner, name }, candidateI
  * against the live API — unlike issue-form `labels:` defaults, which can
  * only apply labels that already exist).
  */
-export async function createIssue(client, { owner, name }, { title, body, labels = [], assignees = [] }) {
+export async function createIssue(client, repo, { title, body, labels = [], assignees = [] }) {
   // An assignee who isn't a collaborator on the repo (e.g. a placeholder
   // GitHub username in people.yaml) makes GitHub REJECT the whole create
   // with 422 "assignees X cannot be assigned" — it is NOT silently dropped
-  // (confirmed against the live API; an earlier comment here claimed
-  // otherwise and broke task creation for placeholder role holders). So on
-  // that specific error, retry once without assignees and report which ones
-  // were dropped via `droppedAssignees`, so the caller can warn instead of
-  // losing the whole write.
+  // (confirmed against the live API). So on that specific error, keep only
+  // the assignees GitHub says are assignable, retry once with those, and
+  // report the rest via `droppedAssignees` so the caller can warn instead of
+  // losing the whole write (or a valid co-assignee along with a bad one).
+  const { owner, name } = repo;
   try {
     const response = await client.rest.issues.create({ owner, repo: name, title, body, labels, assignees });
     return response.data;
   } catch (err) {
-    const assigneeRejected =
-      err.status === 422 && assignees.length > 0 && (err.response?.data?.errors ?? []).some((e) => e.field === 'assignees');
-    if (!assigneeRejected) throw err;
-    const response = await client.rest.issues.create({ owner, repo: name, title, body, labels });
-    return { ...response.data, droppedAssignees: assignees };
+    if (!isAssigneeRejection(err, assignees)) throw err;
+    const { ok, dropped } = await splitAssignable(client, repo, assignees);
+    const response = await client.rest.issues.create({ owner, repo: name, title, body, labels, ...(ok.length ? { assignees: ok } : {}) });
+    return { ...response.data, droppedAssignees: dropped };
   }
+}
+
+function isAssigneeRejection(err, assignees) {
+  return err.status === 422 && assignees.length > 0 && (err.response?.data?.errors ?? []).some((e) => e.field === 'assignees');
+}
+
+/** Split usernames into those GitHub allows as assignees on this repo and those it doesn't (GET /assignees/{user}: 204 vs 404). */
+async function splitAssignable(client, { owner, name }, assignees) {
+  const checks = await Promise.all(
+    assignees.map((assignee) =>
+      client.rest.issues
+        .checkUserCanBeAssigned({ owner, repo: name, assignee })
+        .then(() => true)
+        .catch((err) => {
+          if (err.status === 404) return false;
+          throw err;
+        }),
+    ),
+  );
+  return { ok: assignees.filter((_, i) => checks[i]), dropped: assignees.filter((_, i) => !checks[i]) };
 }
 
 /**
  * Replace an issue's assignees (e.g. the candidate issue after its main lead
  * changes). Same GitHub behaviour as createIssue: a non-collaborator makes
- * the whole update fail with 422, so on exactly that error retry with no
- * assignees and return the ones that were dropped.
+ * the whole update fail with 422, so on exactly that error retry with only
+ * the assignable ones and return the ones that were dropped.
  */
-export async function setIssueAssignees(client, { owner, name }, issueNumber, assignees) {
+export async function setIssueAssignees(client, repo, issueNumber, assignees) {
+  const { owner, name } = repo;
   try {
     await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, assignees });
     return { dropped: [] };
   } catch (err) {
-    const assigneeRejected =
-      err.status === 422 && assignees.length > 0 && (err.response?.data?.errors ?? []).some((e) => e.field === 'assignees');
-    if (!assigneeRejected) throw err;
-    await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, assignees: [] });
-    return { dropped: assignees };
+    if (!isAssigneeRejection(err, assignees)) throw err;
+    const { ok, dropped } = await splitAssignable(client, repo, assignees);
+    await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, assignees: ok });
+    return { dropped };
   }
 }
 

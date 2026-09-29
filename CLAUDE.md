@@ -230,8 +230,13 @@ Things worth knowing before touching this:
   own `email:` in `people.yaml`.
 - **An assignee who isn't a repo collaborator makes GitHub reject the
   whole `issues.create` with 422** (confirmed live — it is *not* silently
-  dropped). `createIssue` retries once without assignees on exactly that
-  error and returns `droppedAssignees`; pages warn instead of failing.
+  dropped). On exactly that error `createIssue`/`setIssueAssignees` check
+  each assignee (`checkUserCanBeAssigned`: 204 vs 404), retry once with
+  only the assignable ones, and return the rest as `droppedAssignees`/
+  `dropped`; pages warn instead of failing.
+- **Trigger tasks get two assignees:** the program PI (`resolvePi` —
+  instrument `pi:` over facility `contact.pi`) plus the track role's holder
+  (e.g. spectroscopy_lead), deduped. Other task types get the role holder only.
   Placeholder GitHub usernames in `people.yaml` (stefant, alejandram,
   yushanx) hit this until replaced with real, invited accounts.
 - **Labels auto-create on write**, confirmed against the live API — both

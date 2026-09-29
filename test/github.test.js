@@ -13,14 +13,31 @@ const assigneeError = () =>
   });
 
 describe('createIssue', () => {
+  const notAssignable = () => vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+
   it('retries without assignees when GitHub rejects them, and reports which were dropped', async () => {
     const create = vi.fn().mockRejectedValueOnce(assigneeError()).mockResolvedValueOnce({ data: { number: 5, assignees: [] } });
-    const issue = await createIssue({ rest: { issues: { create } } }, repo, { title: 't', body: 'b', labels: ['x'], assignees: ['stefant'] });
+    const issues = { create, checkUserCanBeAssigned: notAssignable() };
+    const issue = await createIssue({ rest: { issues } }, repo, { title: 't', body: 'b', labels: ['x'], assignees: ['stefant'] });
     expect(issue.number).toBe(5);
     expect(issue.droppedAssignees).toEqual(['stefant']);
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[1][0]).not.toHaveProperty('assignees');
     expect(create.mock.calls[1][0].labels).toEqual(['x']);
+  });
+
+  it('keeps the assignable co-assignee when only one of two is rejected', async () => {
+    const create = vi.fn().mockRejectedValueOnce(assigneeError()).mockResolvedValueOnce({ data: { number: 7, assignees: [{ login: 'shsuyu' }] } });
+    const checkUserCanBeAssigned = vi.fn(({ assignee }) =>
+      assignee === 'shsuyu' ? Promise.resolve({}) : Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
+    );
+    const issue = await createIssue({ rest: { issues: { create, checkUserCanBeAssigned } } }, repo, {
+      title: 't',
+      body: 'b',
+      assignees: ['shsuyu', 'alejandram'],
+    });
+    expect(create.mock.calls[1][0].assignees).toEqual(['shsuyu']);
+    expect(issue.droppedAssignees).toEqual(['alejandram']);
   });
 
   it('does not retry (or swallow) any other error', async () => {
@@ -44,7 +61,8 @@ describe('setIssueAssignees', () => {
     expect(ok.mock.calls[0][0]).toMatchObject({ issue_number: 3, assignees: ['shsuyu'] });
 
     const update = vi.fn().mockRejectedValueOnce(assigneeError()).mockResolvedValueOnce({});
-    expect(await setIssueAssignees({ rest: { issues: { update } } }, repo, 3, ['stefant'])).toEqual({ dropped: ['stefant'] });
+    const checkUserCanBeAssigned = vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+    expect(await setIssueAssignees({ rest: { issues: { update, checkUserCanBeAssigned } } }, repo, 3, ['stefant'])).toEqual({ dropped: ['stefant'] });
     expect(update.mock.calls[1][0].assignees).toEqual([]);
   });
 });

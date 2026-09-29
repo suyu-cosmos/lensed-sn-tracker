@@ -691,7 +691,10 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
       } else {
         const { personId } = resolveRole(candidate.data, track.role, ctx.people);
         const name = personId ? findPerson(ctx.people, personId)?.name ?? personId : 'nobody (role unassigned)';
-        trackHint.textContent = `Will be assigned to ${name} (${track.role}).`;
+        trackHint.textContent =
+          track.task_type === 'trigger'
+            ? `Will be assigned to the chosen facility's PI and ${name} (${track.role}).`
+            : `Will be assigned to ${name} (${track.role}).`;
       }
     }
   }
@@ -774,6 +777,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
         rules: ctx.rules,
         candidate: candidate.data,
         peopleData: ctx.people,
+        facilities,
       });
       const issue = await createIssue(ctx.client, ctx.config.dataRepo, { title, body, labels, assignees });
 
@@ -807,10 +811,12 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
         const ccText = cc.length ? ` (cc: ${cc.map((p) => escapeHtml(p.name)).join(', ')})` : '';
         bannerHtml = `<p class="card">Created <a href="${issue.html_url}" target="_blank" rel="noreferrer">#${issue.number}</a>. <a href="${mailtoUrl}">✉️ Email ${toName}${ccText} about this trigger</a></p>`;
       }
-      if ((issue.assignees ?? []).length === 0) {
-        const wanted = assignees[0];
-        const reminder = wanted
-          ? `Task created, but unassigned: GitHub wouldn't assign ${findPerson(ctx.people, wanted)?.name ?? wanted} (${wanted}) — only collaborators on the data repo can be assigned (a placeholder GitHub username in people.yaml can't). Please assign someone by hand${type === 'trigger' ? ' and email the PI (above)' : ''}.`
+      const dropped = issue.droppedAssignees ?? [];
+      if (dropped.length || (issue.assignees ?? []).length === 0) {
+        const names = dropped.map((id) => `${findPerson(ctx.people, id)?.name ?? id} (${id})`).join(' and ');
+        const unassigned = (issue.assignees ?? []).length === 0;
+        const reminder = dropped.length
+          ? `Task created, but GitHub wouldn't assign ${names} — only collaborators on the data repo can be assigned (a placeholder GitHub username in people.yaml can't). ${unassigned ? 'Please assign someone by hand' : 'Please add them by hand once they have access'}${type === 'trigger' ? ' and email the PI (above)' : ''}.`
           : type === 'trigger'
             ? 'No assignee is set on this task — please email the PI (above) and assign someone responsible for the follow-up.'
             : "No assignee is set on this task yet — consider assigning someone so it doesn't get lost.";

@@ -292,6 +292,25 @@ describe('Milestone 2.5 track fields', () => {
     expect(title).toBe('[X] trigger: vlt/muse (image B)');
   });
 
+  it('a trigger is assigned to both the program PI and the track role holder (instrument pi overrides facility pi)', () => {
+    const facilities = [
+      { id: 'vlt', contact: { pi: 'facpi' }, instruments: [{ id: 'muse', pi: 'musepi' }, { id: 'soxs' }] },
+    ];
+    const ctx = { rules, candidate: { id: 'X' }, peopleData, facilities };
+    const muse = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse', mode: 'ifu', images: [] }, ctx);
+    expect(muse.assignees).toEqual(['musepi', 'stefant']);
+    const soxs = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'soxs', mode: 'spectroscopy', images: [] }, ctx);
+    expect(soxs.assignees).toEqual(['facpi', 'stefant']);
+    // PI who also holds the role is assigned once; non-trigger tasks get no PI.
+    const same = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse', mode: 'ifu', images: [] }, {
+      ...ctx,
+      candidate: { roles_override: { photometry_lead: 'musepi' } },
+    });
+    expect(same.assignees).toEqual(['musepi']);
+    const obs = buildTaskIssue('X', 'observation', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse' }, ctx);
+    expect(obs.assignees).toEqual(['stefant']);
+  });
+
   it('untracked tasks still work with no context (backward compatible)', () => {
     const { labels, assignees, body } = buildTaskIssue('X', 'analysis', { product: 'lightcurve', result: '', files: [] });
     expect(labels).toEqual(['type:analysis', 'cand:X']);

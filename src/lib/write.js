@@ -92,12 +92,14 @@ export function buildCandidateIssue(fields) {
  * `fields.image` (per-image tracks), `fields.role` (defaults from the track),
  * plus `cadence_days`/`until` on triggers and `epochs` on observations.
  *
- * `context` ({ rules, candidate, peopleData }) is optional: when given, the
- * role defaults from the track and the assignee is resolved from the role via
- * `resolveRole` (so a candidate's roles_override wins, as everywhere else).
+ * `context` ({ rules, candidate, peopleData, facilities }) is optional: when
+ * given, the role defaults from the track and the assignee is resolved from
+ * the role via `resolveRole` (so a candidate's roles_override wins, as
+ * everywhere else). A trigger is also assigned to the observing program's PI
+ * (`resolvePi`), since the PI and the role holder coordinate it together.
  */
 export function buildTaskIssue(candidateId, type, fields, context = {}) {
-  const { rules, candidate, peopleData } = context;
+  const { rules, candidate, peopleData, facilities } = context;
   const track = fields.track && rules ? (rules.tracks ?? []).find((t) => t.id === fields.track) : null;
   const role = fields.role || track?.role || null;
   const trackFields = {
@@ -173,10 +175,20 @@ export function buildTaskIssue(candidateId, type, fields, context = {}) {
   if (fields.facility) labels.push(`facility:${fields.facility}`);
   if (fields.track) labels.push(`track:${fields.track}`);
 
-  const assigneeId = role && peopleData ? resolveRole(candidate ?? {}, role, peopleData).personId : null;
-  const assignees = assigneeId ? [assigneeId] : [];
+  const roleHolderId = role && peopleData ? resolveRole(candidate ?? {}, role, peopleData).personId : null;
+  let piId = null;
+  if (type === 'trigger' && facilities) {
+    const facility = facilities.find((f) => f.id === fields.facility);
+    piId = facility ? resolvePi(facility, facility.instruments?.find((i) => i.id === fields.instrument)) : null;
+  }
+  const assignees = [...new Set([piId, roleHolderId])].filter(Boolean);
 
   return { title, body, labels, assignees };
+}
+
+/** The program PI for a trigger: an instrument's own `pi:` overrides the facility-level `contact.pi`. */
+export function resolvePi(facility, instrument) {
+  return instrument?.pi ?? facility?.contact?.pi ?? null;
 }
 
 /**
@@ -203,7 +215,7 @@ export function buildTaskIssue(candidateId, type, fields, context = {}) {
  * rather than re-deriving the same lookups.
  */
 export function buildTriggerMailto({ candidate, facility, instrument, mode, visibilityTonight, peopleData }) {
-  const piId = instrument?.pi ?? facility.contact?.pi;
+  const piId = resolvePi(facility, instrument);
   const toPerson = findPerson(peopleData, piId) ?? null;
   const to = toPerson?.email ?? facility.contact?.email ?? '';
 
