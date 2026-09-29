@@ -241,7 +241,20 @@ tr.finished td { opacity: 0.6; }
 .next-action.action-image, .next-action.action-track { font-weight: 600; }
 .legend { font-size: 0.8rem; margin-top: 0.5rem; }
 details.role-overrides { margin: 0.5rem 0 1rem; }
+/* Indent the role rows under their summary so the Status field after the
+   section reads as separate from it. */
+details.role-overrides > :not(summary) { margin-left: 1.25rem; }
+details.role-overrides[open] { padding-bottom: 0.25rem; border-left: 3px solid var(--border); padding-left: 0.5rem; }
 details.role-overrides summary { cursor: pointer; }
 details.role-overrides summary h3 { display: inline; }
 fieldset.phase-roles legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.3rem; }
 #roles-card .track-head h2 { margin: 0; }
+
+footer.version-stamp {
+  margin-top: 2.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+footer.version-stamp a { color: var(--muted); }

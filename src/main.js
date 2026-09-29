@@ -2,7 +2,7 @@
 // resulting snapshot to whichever page the router picks.
 
 import { getToken, setToken, clearToken } from './lib/auth.js';
-import { loadAppData } from './lib/data.js';
+import { loadAppData, config } from './lib/data.js';
 import { route, start } from './router.js';
 import * as dashboard from './pages/dashboard.js';
 import * as candidatePage from './pages/candidate.js';
@@ -49,6 +49,22 @@ function updateNav(nav) {
   });
 }
 
+/**
+ * "build <date> UT · <commit>" — injected at build time by vite.config.js.
+ * Lets anyone check which version they're seeing (Pages caches ~10 min).
+ */
+function versionStampHtml() {
+  const commit = typeof __BUILD_COMMIT__ !== 'undefined' ? __BUILD_COMMIT__ : 'dev';
+  const built = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : null;
+  const when = built ? `${built.slice(0, 16).replace('T', ' ')} UT` : 'dev build';
+  const { owner, name } = config.codeRepo ?? {};
+  const commitHtml =
+    owner && name && commit !== 'unknown' && commit !== 'dev'
+      ? `<a href="https://github.com/${owner}/${name}/commit/${commit}" target="_blank" rel="noreferrer">${commit}</a>`
+      : commit;
+  return `lensed-sn-tracker · build ${when} · ${commitHtml}`;
+}
+
 async function boot() {
   const token = getToken();
   if (!token) {
@@ -80,7 +96,10 @@ async function boot() {
   const nav = document.createElement('nav');
   nav.className = 'topnav';
   const content = document.createElement('div');
-  appEl.append(nav, content);
+  const footer = document.createElement('footer');
+  footer.className = 'version-stamp';
+  footer.innerHTML = versionStampHtml();
+  appEl.append(nav, content, footer);
 
   route('/', () => {
     updateNav(nav);
