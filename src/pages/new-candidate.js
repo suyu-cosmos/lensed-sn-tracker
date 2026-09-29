@@ -5,7 +5,7 @@
 
 import { createIssue } from '../lib/github.js';
 import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
-import { activeStatuses } from '../lib/rules.js';
+import { activeStatuses, findPerson } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
 import { parseIssueBody } from '../lib/yaml.js';
 import { navigate } from '../router.js';
@@ -14,6 +14,39 @@ function optionEls(values, labels = values, selected = null) {
   return values
     .map((v, i) => `<option value="${escapeHtml(v)}" ${v === selected ? 'selected' : ''}>${escapeHtml(labels[i])}</option>`)
     .join('');
+}
+
+/**
+ * One dropdown per group role (people.yaml `roles:`). The default choice is
+ * "Group default (<current holder>)" and writes nothing, so the candidate
+ * keeps following the group default if it changes later; picking a person
+ * (even the current holder) pins that role for this candidate via
+ * `roles_override` — resolution order in plan §4.1.
+ */
+function renderRoleOverrides(people) {
+  const roles = Object.entries(people.roles ?? {});
+  if (!roles.length) return '';
+  const everyone = people.people ?? [];
+  const rows = roles
+    .map(([roleId, role]) => {
+      const holder = role.holder ? findPerson(people, role.holder)?.name ?? role.holder : 'unassigned';
+      const options = everyone
+        .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`)
+        .join('');
+      return `<label>${escapeHtml(roleId)}${role.description ? ` <span class="muted">— ${escapeHtml(role.description)}</span>` : ''}
+          <select name="role:${escapeHtml(roleId)}">
+            <option value="">Group default (${escapeHtml(holder)})</option>
+            ${options}
+          </select>
+        </label>`;
+    })
+    .join('');
+  return `
+      <details class="role-overrides">
+        <summary><h3>Roles for this candidate <span class="muted">(optional — defaults to the group roles)</span></h3></summary>
+        <p class="muted">Leave a role on "Group default" to keep following the group assignment in people.yaml. Choosing a person pins that role for this candidate only.</p>
+        ${rows}
+      </details>`;
 }
 
 export function render(container, ctx) {
@@ -45,6 +78,7 @@ export function render(container, ctx) {
 
       <h3>Ownership</h3>
       <label>Leads (GitHub usernames) * <input name="leads" required placeholder="shsuyu, stefanschuldt" /></label>
+      ${renderRoleOverrides(ctx.people)}
       <label>Status
         <select name="status">${statuses.map((s) => `<option value="${escapeHtml(s.id)}" ${s.id === defaultStatus ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select>
       </label>
@@ -107,6 +141,11 @@ export function render(container, ctx) {
       snType: values.snType,
       leads,
       status: values.status,
+      rolesOverride: Object.fromEntries(
+        Object.entries(values)
+          .filter(([key, value]) => key.startsWith('role:') && value)
+          .map(([key, value]) => [key.slice('role:'.length), value]),
+      ),
     };
 
     submitBtn.disabled = true;

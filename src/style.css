@@ -240,3 +240,6 @@ label.inline-check input { display: inline-block; width: auto; margin: 0; }
 tr.finished td { opacity: 0.6; }
 .next-action.action-image, .next-action.action-track { font-weight: 600; }
 .legend { font-size: 0.8rem; margin-top: 0.5rem; }
+details.role-overrides { margin: 0.5rem 0 1rem; }
+details.role-overrides summary { cursor: pointer; }
+details.role-overrides summary h3 { display: inline; }

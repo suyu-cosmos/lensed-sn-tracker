@@ -372,3 +372,13 @@ describe('setTaskTrack', () => {
     await expect(setTaskTrack(client, repo, task, 'nope', rules)).rejects.toThrow(/Unknown track/);
   });
 });
+
+describe('buildCandidateIssue roles_override', () => {
+  it('writes the roles chosen in the form, and {} when none are chosen', () => {
+    const base = { id: 'X', raDeg: 0, decDeg: 0, leads: ['a'], status: 'new_candidate' };
+    expect(parseIssueBody(buildCandidateIssue({ ...base, rolesOverride: { photometry_lead: 'shsuyu' } }).body).data.roles_override).toEqual({
+      photometry_lead: 'shsuyu',
+    });
+    expect(parseIssueBody(buildCandidateIssue(base).body).data.roles_override).toEqual({});
+  });
+});

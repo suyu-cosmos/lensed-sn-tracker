@@ -500,6 +500,11 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
 - Helpers `isTerminal`, `trackIndicators`, `taskDueDate`, `nextAction` in `rules.js`; tests in
   `test/rules.test.js` (61 total). Checked with a throwaway jsdom test against the real YAML.
 
+**Also done during M2.5 (user request):** the "+ New candidate" form has a collapsible
+"Roles for this candidate" section — one dropdown per group role, defaulting to "Group
+default (<holder>)" (writes nothing, so the candidate keeps following people.yaml); choosing
+a person writes it to `roles_override` (plan §4.1 level 1).
+
 **Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
 
 **Acceptance check** (manual, on a test candidate): confirm → Live follow-up shows four track

@@ -68,7 +68,7 @@ export function buildCandidateIssue(fields) {
     },
     image_dates: {}, // per image { detected, peak, faded } — the event record tracks key off (plan §6.2)
     leads: fields.leads,
-    roles_override: {},
+    roles_override: fields.rolesOverride ?? {}, // per-candidate role holders chosen in the form (plan §4.1 level 1)
     status: fields.status,
     false_positive_type: null,
   };
