@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  isBackwardTransition,
   tracksForStatus,
   trackState,
   eligibleImages,
@@ -125,5 +126,18 @@ describe('predictedArrivals', () => {
       { image: 'B', date: '2026-09-02', errDays: null },
     ]);
     expect(predictedArrivals({ time_delays: { predicted: { B: 1 } } })).toEqual([]);
+  });
+});
+
+describe('isBackwardTransition', () => {
+  const r = { statuses: [{ id: 'new_candidate' }, { id: 'lensed_sn' }, { id: 'post_fade' }, { id: 'data_complete' }] };
+  it('is true only when the target is earlier in rules.yaml order', () => {
+    expect(isBackwardTransition(r, 'post_fade', 'lensed_sn')).toBe(true);
+    expect(isBackwardTransition(r, 'post_fade', 'new_candidate')).toBe(true);
+    expect(isBackwardTransition(r, 'post_fade', 'data_complete')).toBe(false);
+    expect(isBackwardTransition(r, 'lensed_sn', 'lensed_sn')).toBe(false);
+  });
+  it('is false for unknown ids rather than guessing', () => {
+    expect(isBackwardTransition(r, 'nope', 'lensed_sn')).toBe(false);
   });
 });

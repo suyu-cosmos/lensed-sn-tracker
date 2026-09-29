@@ -9,7 +9,16 @@
 // curve would be read off of.
 
 import { loadCandidateDetail, facilityById, buildTaskFromIssue } from '../lib/data.js';
-import { getStatus, resolveAllRoles, findPerson, nextStepsFor, transitionsFor, requiredFieldsFor, vocabulary } from '../lib/rules.js';
+import {
+  getStatus,
+  resolveAllRoles,
+  findPerson,
+  nextStepsFor,
+  transitionsFor,
+  isBackwardTransition,
+  requiredFieldsFor,
+  vocabulary,
+} from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue } from '../lib/github.js';
 import {
@@ -138,8 +147,16 @@ function optionEls(values, labels = values) {
 
 function renderChangeStatus(rules, currentStatusId) {
   const { declared, other } = transitionsFor(rules, currentStatusId);
-  const declaredOptions = declared.map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(getStatus(rules, d.id)?.label ?? d.id)} — ${escapeHtml(d.description)}</option>`).join('');
-  const otherOptions = other.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(getStatus(rules, id)?.label ?? id)}</option>`).join('');
+  // A move to an earlier phase is labelled "↩ Back to …" so it doesn't read
+  // like a different status; the text after the dash is the *reason* for the
+  // move (it depends on where you're coming from), not part of the name.
+  const optionText = (id, reason) => {
+    const label = getStatus(rules, id)?.label ?? id;
+    const name = isBackwardTransition(rules, currentStatusId, id) ? `↩ Back to ${label}` : label;
+    return reason ? `${name} — ${reason}` : name;
+  };
+  const declaredOptions = declared.map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(optionText(d.id, d.description))}</option>`).join('');
+  const otherOptions = other.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(optionText(id))}</option>`).join('');
   return `
     <div class="card" id="change-status-card">
       <h2>Change status</h2>

@@ -31,6 +31,19 @@ export function transitionsFor(rules, statusId) {
 }
 
 /**
+ * True when moving from `fromId` to `toId` goes BACK in the workflow, i.e.
+ * the target is listed earlier in rules.yaml's `statuses` (which is kept in
+ * workflow order). Used to label such moves "Back to …" in the UI so a
+ * return to an earlier phase doesn't read like a different status.
+ */
+export function isBackwardTransition(rules, fromId, toId) {
+  const ids = rules.statuses.map((s) => s.id);
+  const from = ids.indexOf(fromId);
+  const to = ids.indexOf(toId);
+  return from !== -1 && to !== -1 && to < from;
+}
+
+/**
  * Resolve who holds a role for one candidate, in the order from plan §4.1:
  * 1. candidate.roles_override[roleId]
  * 2. people.roles[roleId].holder

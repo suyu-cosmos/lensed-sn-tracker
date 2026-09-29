@@ -94,7 +94,11 @@ GitHub REST "sub-issues" API is in use anywhere.
 `src/lib/rules.js` reads `rules.statuses` to resolve a status's label/color
 (`getStatus`), the next-steps text (`nextStepsFor`), and the transition menu
 (`transitionsFor` — declared transitions first, then every other status as
-"other", so an unanticipated path is never blocked). A candidate whose
+"other", so an unanticipated path is never blocked). The order of
+`rules.statuses` is the workflow order: `isBackwardTransition` uses it to
+label a move to an earlier status "↩ Back to …" in the Change-status menu,
+whose text after the dash is the transition's *reason* (it varies by origin
+status), not part of the status name. A candidate whose
 `status` doesn't match any id in `rules.yaml` should render as an "unknown
 status" pill (see `statusPillHtml` in `src/lib/format.js`), not be hidden or
 throw.
