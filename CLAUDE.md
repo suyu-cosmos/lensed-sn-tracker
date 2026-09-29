@@ -124,7 +124,23 @@ chosen per exposure, e.g. WFI, as opposed to a simultaneous multi-band
 imager like GROND where a pick-one dropdown would misrepresent how it's
 actually used). `single_filter` drives whether the Add-task trigger
 form's "Wavelength band" picker (built from that instrument's `filters:`)
-shows at all — see `wireFacilityCascade` in `candidate.js`.
+shows at all — see `wireFacilityCascade` in `candidate.js`. The same
+function also shows/hides the trigger form's "Images" field based on the
+*selected mode*, not the instrument: visible only for `mode ===
+'spectroscopy'` or (`facility === 'jwst' && mode === 'ifu'`) — a narrow
+aperture (long-slit, or JWST NIRSpec's small-FOV IFU) needs to know which
+lensed image(s) it's pointed at; imaging and a wide-field IFU like MUSE
+typically cover the whole lens system and don't. Hiding it also clears
+its value, so a stale leftover doesn't sneak into a later submission.
+
+**A `[hidden]` element can still render if your own CSS sets `display`
+on it.** The browser's built-in `[hidden]{display:none}` rule is
+user-agent-origin, which loses to *any* same-property author rule
+regardless of selector specificity — hit this for real with `form label {
+display: block }` overriding a hidden label. Fixed globally with
+`[hidden] { display: none !important; }` near the top of `style.css`;
+don't remove it, and don't add another rule that sets `display` on an
+element type that might also carry `hidden` without checking this first.
 
 **Routing is a ~40-line hand-rolled hash router** (`src/router.js`): register
 `route('/pattern/:id', handler)`, then `start()`. Each page module exports a

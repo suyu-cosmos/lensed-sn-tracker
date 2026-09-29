@@ -179,7 +179,7 @@ function renderAddTask(facilities) {
           <label>Mode <select name="mode" data-role="mode"></select></label>
           <label data-role="filter-wrap" hidden>Wavelength band <select name="filterBand" data-role="filter"></select></label>
           <label>Requested date <input name="requestedDate" type="date" /></label>
-          <label>Images <input name="images" placeholder="A, B" /></label>
+          <label data-role="images-wrap">Images <input name="images" placeholder="A, B" /></label>
         </fieldset>
 
         <fieldset data-type="observation" hidden>
@@ -214,15 +214,20 @@ function renderAddTask(facilities) {
 }
 
 /**
- * Wire up the facility -> instrument -> mode(+filter) cascade for one
- * (facility-select, instrument-select[, mode-select[, filter-select,
- * filter-wrap]]) group. `filterSelect`/`filterWrap` are optional: when
- * given, a "Wavelength band" picker is shown only for instruments marked
- * `single_filter: true` (facilities.yaml) — one filter chosen per
- * exposure, as opposed to a simultaneous multi-band imager like GROND,
- * where a pick-one dropdown would misrepresent how it's actually used.
+ * Wire up the facility -> instrument -> mode(+filter, +images) cascade
+ * for one (facility-select, instrument-select[, mode-select[,
+ * filter-select, filter-wrap[, images-wrap]]]) group. `filterSelect`/
+ * `filterWrap` are optional: when given, a "Wavelength band" picker is
+ * shown only for instruments marked `single_filter: true`
+ * (facilities.yaml) — one filter chosen per exposure, as opposed to a
+ * simultaneous multi-band imager like GROND, where a pick-one dropdown
+ * would misrepresent how it's actually used. `imagesWrap` is likewise
+ * optional: "which lensed image(s)" only matters for a narrow aperture
+ * (long-slit spectroscopy, or JWST's small-FOV NIRSpec IFU) — imaging and
+ * a wide-field IFU like MUSE typically cover the whole lens system, so
+ * the field is hidden (and cleared) otherwise.
  */
-function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect, modeSelect, filterSelect, filterWrap) {
+function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect, modeSelect, filterSelect, filterWrap, imagesWrap) {
   function currentInstrument() {
     const facility = facilityById(facilities, facilitySelect.value);
     return facility?.instruments?.find((i) => i.id === instrumentSelect.value);
@@ -241,6 +246,12 @@ function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect,
     const instrument = currentInstrument();
     const modes = instrument?.modes?.length ? instrument.modes : INSTRUMENT_MODES;
     modeSelect.innerHTML = optionEls(modes);
+    if (imagesWrap) updateImages();
+  }
+  function updateImages() {
+    const show = modeSelect.value === 'spectroscopy' || (facilitySelect.value === 'jwst' && modeSelect.value === 'ifu');
+    imagesWrap.hidden = !show;
+    if (!show) imagesWrap.querySelector('input').value = '';
   }
   function updateFilter() {
     const instrument = currentInstrument();
@@ -253,6 +264,7 @@ function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect,
     if (modeSelect) updateModes();
     if (filterSelect) updateFilter();
   });
+  if (modeSelect && imagesWrap) modeSelect.addEventListener('change', updateImages);
   updateInstruments();
 }
 
@@ -320,6 +332,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
     form.querySelector('fieldset[data-type="trigger"] [data-role="mode"]'),
     form.querySelector('fieldset[data-type="trigger"] [data-role="filter"]'),
     form.querySelector('fieldset[data-type="trigger"] [data-role="filter-wrap"]'),
+    form.querySelector('fieldset[data-type="trigger"] [data-role="images-wrap"]'),
   );
   wireFacilityCascade(
     form,
