@@ -83,17 +83,17 @@ export function render(container, ctx) {
       <label>TNS name <input name="tnsName" placeholder="SN 2026abc" /></label>
       <label>Discovery survey <input name="discoverySurvey" /></label>
       <label>Discovery date <input name="discoveryDate" type="date" /></label>
-      <label>RA (deg, J2000) * <input name="raDeg" type="number" step="any" required /></label>
-      <label>Dec (deg, J2000) * <input name="decDeg" type="number" step="any" required /></label>
+      <label>RA (deg, J2000) * <input name="raDeg" type="text" inputmode="decimal" pattern="[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)" title="A decimal number, e.g. 188.7363" required /></label>
+      <label>Dec (deg, J2000) * <input name="decDeg" type="text" inputmode="decimal" pattern="[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)" title="A decimal number, e.g. -21.12" required /></label>
 
       <h3>Lens</h3>
       <label>Lens name <input name="lensName" /></label>
-      <label>Lens redshift <input name="zLens" type="number" step="any" /></label>
+      <label>Lens redshift <input name="zLens" type="text" inputmode="decimal" pattern="[0-9]+\.?[0-9]*|\.[0-9]+" title="A decimal number, e.g. 0.42" /></label>
       <label>Lens type <select name="lensType">${optionEls(LENS_TYPES, LENS_TYPES, 'galaxy')}</select></label>
       <label>Number of images <input name="nImages" type="number" step="1" /></label>
 
       <h3>Source</h3>
-      <label>Source redshift <input name="zSource" type="number" step="any" /></label>
+      <label>Source redshift <input name="zSource" type="text" inputmode="decimal" pattern="[0-9]+\.?[0-9]*|\.[0-9]+" title="A decimal number, e.g. 0.42" /></label>
       <label>SN type <select name="snType">${optionEls(SN_TYPES, SN_TYPES, 'unknown')}</select></label>
 
       <h3>Status &amp; people's roles</h3>
