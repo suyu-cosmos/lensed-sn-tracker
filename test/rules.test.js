@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  rolesForStatus,
+  newlyRelevantRoles,
   isTerminal,
   trackIndicators,
   nextAction,
@@ -184,5 +186,25 @@ describe('dashboard summaries', () => {
   it('falls back to an open undated task, then the phase next_step', () => {
     expect(nextAction(r, cand, [t('phot', 'open')])).toEqual({ kind: 'task', text: '[Phot] task-phot' });
     expect(nextAction(r, { status: 'data_complete' }, [])).toEqual({ kind: 'step', text: 'Close tasks' });
+  });
+});
+
+describe('phase-relevant roles', () => {
+  const r = {
+    statuses: [
+      { id: 'new_candidate', roles: ['coordinator', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead'] },
+      { id: 'lensed_sn', roles: ['coordinator', 'trigger_coordinator', 'photometry_lead', 'spectroscopy_lead', 'lens_modeling_lead', 'data_manager'] },
+      { id: 'no_roles_listed' },
+    ],
+  };
+  const people = { roles: { coordinator: {}, trigger_coordinator: {}, photometry_lead: {}, spectroscopy_lead: {}, lens_modeling_lead: {}, data_manager: {} } };
+
+  it('rolesForStatus uses the declared list, else every group role', () => {
+    expect(rolesForStatus(r, 'new_candidate', people)).toHaveLength(4);
+    expect(rolesForStatus(r, 'no_roles_listed', people)).toHaveLength(6);
+  });
+  it('newlyRelevantRoles is what confirmation should prompt for', () => {
+    expect(newlyRelevantRoles(r, 'new_candidate', 'lensed_sn', people)).toEqual(['lens_modeling_lead', 'data_manager']);
+    expect(newlyRelevantRoles(r, 'lensed_sn', 'new_candidate', people)).toEqual([]);
   });
 });

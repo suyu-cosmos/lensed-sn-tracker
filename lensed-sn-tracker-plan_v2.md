@@ -505,6 +505,22 @@ tests in `test/write.test.js`; audited that every live candidate has exactly one
 default (<holder>)" (writes nothing, so the candidate keeps following people.yaml); choosing
 a person writes it to `roles_override` (plan §4.1 level 1).
 
+**Also done during M2.5 (user request): phase-relevant roles + in-page role editor.**
+- `rules.yaml`: each status lists `roles:` — the people.yaml roles that matter in that phase.
+  New candidate / Awaiting confirmation: coordinator, trigger_coordinator, photometry_lead,
+  spectroscopy_lead (both confirmation routes). Live follow-up: all six. Post-fade:
+  coordinator, trigger_coordinator, lens_modeling_lead, spectroscopy_lead, data_manager.
+  Data complete / False positive: coordinator, data_manager. Unlisted roles still resolve
+  normally (§4.1); they're just not emphasised.
+- Candidate page **Roles card**: phase roles up front, others folded under "Not active in this
+  phase"; **Edit roles** turns them into dropdowns ("Group default (<holder>)" or a person)
+  that write `roles_override` — setting "Group default" removes the pin
+  (`updateCandidateFields(..., { replace: ['roles_override'] })`).
+- **Change-status** prompts (optionally) for roles that become relevant in the target phase
+  (`newlyRelevantRoles`) — on confirmation that's lens_modeling_lead + data_manager — and
+  saves them in the same write as the status.
+- New-candidate form shows only the starting status's roles.
+
 **Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
 
 **Acceptance check** (manual, on a test candidate): confirm → Live follow-up shows four track

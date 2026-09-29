@@ -243,3 +243,5 @@ tr.finished td { opacity: 0.6; }
 details.role-overrides { margin: 0.5rem 0 1rem; }
 details.role-overrides summary { cursor: pointer; }
 details.role-overrides summary h3 { display: inline; }
+fieldset.phase-roles legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.3rem; }
+#roles-card .track-head h2 { margin: 0; }

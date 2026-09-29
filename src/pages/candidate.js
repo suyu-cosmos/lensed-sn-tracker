@@ -11,7 +11,6 @@
 import { loadCandidateDetail, facilityById, buildTaskFromIssue } from '../lib/data.js';
 import {
   getStatus,
-  resolveAllRoles,
   findPerson,
   nextStepsFor,
   transitionsFor,
@@ -26,6 +25,8 @@ import {
   trackInstruments,
   predictedArrivals,
   referenceImage,
+  rolesForStatus,
+  newlyRelevantRoles,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue } from '../lib/github.js';
@@ -92,17 +93,75 @@ function renderVisibility(candidateData, facilities, rules) {
     .join('');
 }
 
-function renderRoles(candidateData, people) {
-  const roles = resolveAllRoles(candidateData, people);
-  return Object.entries(roles)
-    .map(([roleId, { personId, source }]) => {
-      const person = personId ? findPerson(people, personId) : null;
-      const name = person?.name ?? personId ?? 'unassigned';
-      const tag = source === 'default' ? ' <span class="inherited">(inherited)</span>' : '';
-      const cls = source === 'unassigned' ? 'unassigned' : '';
-      return `<li><strong>${escapeHtml(roleId)}:</strong> <span class="${cls}">${escapeHtml(name)}</span>${tag}</li>`;
-    })
+function roleLine(data, people, roleId) {
+  const { personId, source } = resolveRole(data, roleId, people);
+  const name = personId ? findPerson(people, personId)?.name ?? personId : 'unassigned';
+  const tag = source === 'default' ? ' <span class="inherited">(group default)</span>' : '';
+  const cls = source === 'unassigned' ? 'unassigned' : '';
+  return `<li><strong>${escapeHtml(roleId)}:</strong> <span class="${cls}">${escapeHtml(name)}</span>${tag}</li>`;
+}
+
+/** Dropdown for one role: "" = group default (writes nothing), else a person id. */
+function roleSelect(name, roleId, people, currentOverride) {
+  const holderId = people.roles?.[roleId]?.holder;
+  const holder = holderId ? findPerson(people, holderId)?.name ?? holderId : 'unassigned';
+  const options = (people.people ?? [])
+    .map((p) => `<option value="${escapeHtml(p.id)}" ${p.id === currentOverride ? 'selected' : ''}>${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`)
     .join('');
+  return `<select name="${escapeHtml(name)}"><option value="" ${currentOverride ? '' : 'selected'}>Group default (${escapeHtml(holder)})</option>${options}</select>`;
+}
+
+/**
+ * Roles card: the phase's relevant roles (rules.yaml `roles:`) up front, the
+ * rest folded away; "Edit roles" swaps in a form of dropdowns that writes
+ * `roles_override` (plan §4.1 level 1). "Group default" removes the pin.
+ */
+function renderRolesCard(data, rules, people) {
+  const all = Object.keys(people.roles ?? {});
+  const relevant = rolesForStatus(rules, data.status, people).filter((r) => all.includes(r));
+  const others = all.filter((r) => !relevant.includes(r));
+  const phase = getStatus(rules, data.status)?.label ?? data.status;
+  const overrides = data.roles_override ?? {};
+  const editRow = (roleId) => `<label>${escapeHtml(roleId)} ${roleSelect(`roleov:${roleId}`, roleId, people, overrides[roleId])}</label>`;
+
+  return `
+    <div class="card" id="roles-card">
+      <div class="track-head">
+        <h2>Roles <span class="muted">(${escapeHtml(phase)})</span></h2>
+        <button type="button" class="linklike" id="edit-roles-btn">Edit roles</button>
+      </div>
+      <div id="roles-view">
+        <ul class="next-steps">${relevant.map((r) => roleLine(data, people, r)).join('')}</ul>
+        ${
+          others.length
+            ? `<details><summary class="muted">Not active in this phase (${others.length})</summary><ul class="next-steps">${others
+                .map((r) => roleLine(data, people, r))
+                .join('')}</ul></details>`
+            : ''
+        }
+      </div>
+      <form id="roles-form" hidden>
+        <p class="muted">"Group default" follows people.yaml; choosing a person pins that role for this candidate only.</p>
+        ${relevant.map(editRow).join('')}
+        ${others.length ? `<details><summary class="muted">Roles not active in this phase</summary>${others.map(editRow).join('')}</details>` : ''}
+        <div class="form-actions">
+          <button type="submit">Save roles</button>
+          <button type="button" class="linklike" id="cancel-roles-btn">Cancel</button>
+          <span id="roles-error" class="error"></span>
+        </div>
+      </form>
+    </div>`;
+}
+
+/** Read `roleov:<role>` selects from a form into a full roles_override object (base kept for roles not in the form). */
+function collectRoleOverrides(form, base = {}) {
+  const next = { ...base };
+  form.querySelectorAll('select[name^="roleov:"]').forEach((sel) => {
+    const roleId = sel.name.slice('roleov:'.length);
+    if (sel.value) next[roleId] = sel.value;
+    else delete next[roleId];
+  });
+  return next;
 }
 
 /**
@@ -495,7 +554,7 @@ function wireChangeStatusForm(container, ctx, candidate, rules) {
 
   select.addEventListener('change', () => {
     const requires = requiredFieldsFor(rules, select.value);
-    extra.innerHTML = requires
+    const requiredHtml = requires
       .map((field) => {
         const vocab = vocabulary(rules, field);
         if (vocab.length) {
@@ -504,6 +563,17 @@ function wireChangeStatusForm(container, ctx, candidate, rules) {
         return `<label>${escapeHtml(field)} <input name="extra:${field}" required /></label>`;
       })
       .join('');
+    // Roles that become relevant in the target phase (rules.yaml `roles:`) —
+    // e.g. lens_modeling_lead + data_manager on confirmation — can be set in
+    // the same action. Optional: leaving "Group default" keeps people.yaml's.
+    const newRoles = select.value ? newlyRelevantRoles(rules, candidate.data.status, select.value, ctx.people) : [];
+    const overrides = candidate.data.roles_override ?? {};
+    const rolesHtml = newRoles.length
+      ? `<fieldset class="phase-roles"><legend>Roles now relevant in ${escapeHtml(getStatus(rules, select.value)?.label ?? select.value)} <span class="muted">(optional)</span></legend>${newRoles
+          .map((roleId) => `<label>${escapeHtml(roleId)} ${roleSelect(`roleov:${roleId}`, roleId, ctx.people, overrides[roleId])}</label>`)
+          .join('')}</fieldset>`
+      : '';
+    extra.innerHTML = requiredHtml + rolesHtml;
   });
 
   form.addEventListener('submit', async (e) => {
@@ -518,6 +588,12 @@ function wireChangeStatusForm(container, ctx, candidate, rules) {
     const extraFields = {};
     for (const [key, value] of Object.entries(values)) {
       if (key.startsWith('extra:')) extraFields[key.slice('extra:'.length)] = value;
+    }
+    // Role choices from the "now relevant" prompt ride along in the same
+    // write: changeCandidateStatus merges extra fields flat, so this full
+    // object replaces roles_override (a "Group default" choice removes a pin).
+    if (form.querySelector('select[name^="roleov:"]')) {
+      extraFields.roles_override = collectRoleOverrides(form, candidate.data.roles_override ?? {});
     }
 
     const submitBtn = form.querySelector('button[type="submit"]');
@@ -760,6 +836,42 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
   });
 }
 
+function wireRolesForm(container, ctx, candidate, tasks, comments) {
+  const form = container.querySelector('#roles-form');
+  if (!form) return;
+  const view = container.querySelector('#roles-view');
+  const editBtn = container.querySelector('#edit-roles-btn');
+  const errorEl = form.querySelector('#roles-error');
+  const setEditing = (on) => {
+    form.hidden = !on;
+    view.hidden = on;
+    editBtn.hidden = on;
+  };
+  editBtn.addEventListener('click', () => setEditing(true));
+  form.querySelector('#cancel-roles-btn').addEventListener('click', () => setEditing(false));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.textContent = '';
+    const current = candidate.data.roles_override ?? {};
+    const next = collectRoleOverrides(form, current);
+    if (JSON.stringify(next) === JSON.stringify(current)) {
+      setEditing(false);
+      return;
+    }
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      // `replace` so a role set back to "Group default" is actually removed.
+      candidate.data = await updateCandidateFields(ctx.client, ctx.config.dataRepo, candidate, { roles_override: next }, { replace: ['roles_override'] });
+      renderCandidatePage(container, ctx, candidate, tasks, comments);
+    } catch (err) {
+      errorEl.textContent = `Could not save roles: ${err.message}`;
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 function wireMoveToTrack(container, ctx, candidate, tasks, comments) {
   const errorEl = container.querySelector('#move-task-error');
   container.querySelectorAll('[data-move-task]').forEach((btn) => {
@@ -864,9 +976,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
   const data = candidate.data;
   const status = data ? getStatus(rules, data.status) : null;
 
-  const rolesSection = data
-    ? `<div class="card"><h2>Roles</h2><ul class="next-steps">${renderRoles(data, people)}</ul></div>`
-    : '';
+  const rolesSection = data ? renderRolesCard(data, rules, people) : '';
 
   const nextStepsList = data
     ? nextStepsFor(rules, data.status)
@@ -908,6 +1018,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
 
   if (data) {
     wireChangeStatusForm(container, ctx, candidate, rules);
+    wireRolesForm(container, ctx, candidate, tasks, comments);
     wireImageTimelineForm(container, ctx, candidate, tasks, comments);
     wireMoveToTrack(container, ctx, candidate, tasks, comments);
     wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments);

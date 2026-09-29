@@ -250,3 +250,20 @@ export function nextAction(rules, candidate, tasks) {
   const [firstStep] = nextStepsFor(rules, candidate?.status);
   return { kind: 'step', text: firstStep ?? '—' };
 }
+
+// ---------------------------------------------------------------------------
+// Phase-relevant roles: each status may list `roles:` (rules.yaml). Roles not
+// listed still resolve normally (§4.1); they're just not emphasised/prompted.
+// ---------------------------------------------------------------------------
+
+/** Role ids that matter in a phase; if the status lists none, every group role. */
+export function rolesForStatus(rules, statusId, peopleData) {
+  const declared = getStatus(rules, statusId)?.roles;
+  return declared?.length ? [...declared] : Object.keys(peopleData?.roles ?? {});
+}
+
+/** Roles relevant in `toId` that weren't in `fromId` — what to prompt for on that transition. */
+export function newlyRelevantRoles(rules, fromId, toId, peopleData) {
+  const before = new Set(rolesForStatus(rules, fromId, peopleData));
+  return rolesForStatus(rules, toId, peopleData).filter((role) => !before.has(role));
+}

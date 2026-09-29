@@ -301,8 +301,9 @@ export function deepMerge(base, patch) {
  * write's own result" rule as changeCandidateStatus (see CLAUDE.md). Status
  * changes must still go through changeCandidateStatus, which also keeps the
  * status:* label in sync; this refuses a patch that touches `status`.
+ * Pass `{ replace: ['roles_override'] }` to overwrite a key instead of merging.
  */
-export async function updateCandidateFields(client, dataRepo, candidate, patch) {
+export async function updateCandidateFields(client, dataRepo, candidate, patch, { replace = [] } = {}) {
   if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
     throw new Error('Use changeCandidateStatus to change status (it also updates the status label).');
   }
@@ -311,7 +312,11 @@ export async function updateCandidateFields(client, dataRepo, candidate, patch) 
   if (!data) {
     throw new Error("Could not parse this issue's YAML block; refusing to overwrite it.");
   }
+  // `replace` lists top-level keys whose patch value replaces the stored one
+  // outright instead of deep-merging — needed to *remove* entries, e.g. a
+  // role override set back to "Group default" (merging can only add/change).
   const nextData = deepMerge(data, patch);
+  for (const key of replace) nextData[key] = patch[key];
   await updateIssueBody(client, dataRepo, candidate.issue.number, stringifyIssueBody(nextData, notes, 'candidate'));
   return nextData;
 }

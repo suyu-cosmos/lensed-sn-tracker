@@ -5,7 +5,7 @@
 
 import { createIssue } from '../lib/github.js';
 import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
-import { activeStatuses, findPerson } from '../lib/rules.js';
+import { activeStatuses, findPerson, rolesForStatus } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
 import { parseIssueBody } from '../lib/yaml.js';
 import { navigate } from '../router.js';
@@ -33,7 +33,7 @@ function renderRoleOverrides(people) {
       const options = everyone
         .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`)
         .join('');
-      return `<label>${escapeHtml(roleId)}${role.description ? ` <span class="muted">— ${escapeHtml(role.description)}</span>` : ''}
+      return `<label data-role-row="${escapeHtml(roleId)}">${escapeHtml(roleId)}${role.description ? ` <span class="muted">— ${escapeHtml(role.description)}</span>` : ''}
           <select name="role:${escapeHtml(roleId)}">
             <option value="">Group default (${escapeHtml(holder)})</option>
             ${options}
@@ -44,7 +44,7 @@ function renderRoleOverrides(people) {
   return `
       <details class="role-overrides">
         <summary><h3>Roles for this candidate <span class="muted">(optional — defaults to the group roles)</span></h3></summary>
-        <p class="muted">Leave a role on "Group default" to keep following the group assignment in people.yaml. Choosing a person pins that role for this candidate only.</p>
+        <p class="muted">Only the roles relevant to the chosen starting status are shown — the others become relevant later and can be set on the candidate page (or when changing status). Leave a role on "Group default" to follow people.yaml; choosing a person pins it for this candidate only.</p>
         ${rows}
       </details>`;
 }
@@ -91,6 +91,17 @@ export function render(container, ctx) {
   `;
 
   const form = container.querySelector('#new-candidate-form');
+  const statusSelect = form.querySelector('select[name="status"]');
+  // Show only the roles that matter for the chosen starting status (rules.yaml `roles:`).
+  const relevantRoles = () => new Set(rolesForStatus(rules, statusSelect.value, ctx.people));
+  const syncRoleRows = () => {
+    const relevant = relevantRoles();
+    form.querySelectorAll('[data-role-row]').forEach((row) => {
+      row.hidden = !relevant.has(row.dataset.roleRow);
+    });
+  };
+  statusSelect.addEventListener('change', syncRoleRows);
+  syncRoleRows();
   const errorEl = container.querySelector('#new-candidate-error');
   const submitBtn = form.querySelector('button[type="submit"]');
 
@@ -143,7 +154,7 @@ export function render(container, ctx) {
       status: values.status,
       rolesOverride: Object.fromEntries(
         Object.entries(values)
-          .filter(([key, value]) => key.startsWith('role:') && value)
+          .filter(([key, value]) => key.startsWith('role:') && value && relevantRoles().has(key.slice('role:'.length)))
           .map(([key, value]) => [key.slice('role:'.length), value]),
       ),
     };

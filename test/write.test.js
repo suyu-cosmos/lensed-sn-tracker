@@ -382,3 +382,11 @@ describe('buildCandidateIssue roles_override', () => {
     expect(parseIssueBody(buildCandidateIssue(base).body).data.roles_override).toEqual({});
   });
 });
+
+describe('updateCandidateFields replace option', () => {
+  it('can remove an override by replacing roles_override instead of merging it', async () => {
+    const { client } = mockClient({ id: 'X', status: 'lensed_sn', roles_override: { photometry_lead: 'a', data_manager: 'b' } }, []);
+    const next = await updateCandidateFields(client, { owner: 'o', name: 'r' }, { issue: { number: 1 } }, { roles_override: { data_manager: 'c' } }, { replace: ['roles_override'] });
+    expect(next.roles_override).toEqual({ data_manager: 'c' });
+  });
+});

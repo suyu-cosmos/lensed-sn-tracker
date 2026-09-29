@@ -103,6 +103,14 @@ status), not part of the status name. A candidate whose
 status" pill (see `statusPillHtml` in `src/lib/format.js`), not be hidden or
 throw.
 
+**Each phase declares its relevant roles** (`roles:` per status in rules.yaml;
+`rolesForStatus`/`newlyRelevantRoles` in rules.js). They drive what the Roles
+card shows up front, what Change-status prompts for on entering a phase, and
+which rows the New-candidate form shows. They never change *resolution* —
+an unlisted role still resolves via §4.1. Role edits write `roles_override`
+with `updateCandidateFields(..., { replace: ['roles_override'] })` so "Group
+default" actually removes a pin (deep-merge alone can't delete a key).
+
 **Role resolution has a strict 3-level fallthrough** (plan §4.1), implemented
 in `resolveRole`/`resolveAllRoles` (`src/lib/rules.js`): a candidate's own
 `roles_override.<role>` wins, else `people.yaml`'s `roles.<role>.holder`,
