@@ -117,6 +117,15 @@ renders a text note instead of a night grid for them, and `buildTriggerMailto`
 tonight". If you add another code path that iterates `facilities`, check
 `facility.space_based` before touching `facility.site`.
 
+An instrument can be `group_holder`/`semester_start`/`semester_end`-
+overridden (per-instrument, flat keys, not nested — see `resources.js`)
+and/or `single_filter: true` (imaging instruments only — one filter
+chosen per exposure, e.g. WFI, as opposed to a simultaneous multi-band
+imager like GROND where a pick-one dropdown would misrepresent how it's
+actually used). `single_filter` drives whether the Add-task trigger
+form's "Wavelength band" picker (built from that instrument's `filters:`)
+shows at all — see `wireFacilityCascade` in `candidate.js`.
+
 **Routing is a ~40-line hand-rolled hash router** (`src/router.js`): register
 `route('/pattern/:id', handler)`, then `start()`. Each page module exports a
 single `render(container, ctx[, params])` and owns its own DOM (built via

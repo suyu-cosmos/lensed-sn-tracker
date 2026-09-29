@@ -75,8 +75,9 @@ export function buildTaskIssue(candidateId, type, fields) {
         facility: fields.facility,
         instrument: fields.instrument,
         mode: fields.mode,
+        filter: fields.filterBand || null, // only meaningful for single_filter instruments (facilities.yaml), e.g. WFI's R/I
         requested_date: fields.requestedDate || null,
-        exposure: fields.exposure || null,
+        exposure: fields.exposure || null, // not collected by the app's form on purpose — left for the PI/trigger coordinator (or future automation) to fill in
         images: fields.images,
         pi_contacted: false,
         scheduled_utc: null,

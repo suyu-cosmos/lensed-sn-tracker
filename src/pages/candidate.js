@@ -177,8 +177,8 @@ function renderAddTask(facilities) {
           <label>Facility <select name="facility" data-role="facility">${facilityOptions}</select></label>
           <label>Instrument <select name="instrument" data-role="instrument"></select></label>
           <label>Mode <select name="mode" data-role="mode"></select></label>
+          <label data-role="filter-wrap" hidden>Wavelength band <select name="filterBand" data-role="filter"></select></label>
           <label>Requested date <input name="requestedDate" type="date" /></label>
-          <label>Exposure <input name="exposure" placeholder="4x600s" /></label>
           <label>Images <input name="images" placeholder="A, B" /></label>
         </fieldset>
 
@@ -213,8 +213,20 @@ function renderAddTask(facilities) {
     </div>`;
 }
 
-/** Wire up the facility -> instrument -> mode cascade for one (facility-select, instrument-select[, mode-select]) trio. */
-function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect, modeSelect) {
+/**
+ * Wire up the facility -> instrument -> mode(+filter) cascade for one
+ * (facility-select, instrument-select[, mode-select[, filter-select,
+ * filter-wrap]]) group. `filterSelect`/`filterWrap` are optional: when
+ * given, a "Wavelength band" picker is shown only for instruments marked
+ * `single_filter: true` (facilities.yaml) — one filter chosen per
+ * exposure, as opposed to a simultaneous multi-band imager like GROND,
+ * where a pick-one dropdown would misrepresent how it's actually used.
+ */
+function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect, modeSelect, filterSelect, filterWrap) {
+  function currentInstrument() {
+    const facility = facilityById(facilities, facilitySelect.value);
+    return facility?.instruments?.find((i) => i.id === instrumentSelect.value);
+  }
   function updateInstruments() {
     const facility = facilityById(facilities, facilitySelect.value);
     const instruments = facility?.instruments ?? [];
@@ -223,15 +235,24 @@ function wireFacilityCascade(form, facilities, facilitySelect, instrumentSelect,
       instruments.map((i) => i.name),
     );
     if (modeSelect) updateModes();
+    if (filterSelect) updateFilter();
   }
   function updateModes() {
-    const facility = facilityById(facilities, facilitySelect.value);
-    const instrument = facility?.instruments?.find((i) => i.id === instrumentSelect.value);
+    const instrument = currentInstrument();
     const modes = instrument?.modes?.length ? instrument.modes : INSTRUMENT_MODES;
     modeSelect.innerHTML = optionEls(modes);
   }
+  function updateFilter() {
+    const instrument = currentInstrument();
+    const show = Boolean(instrument?.single_filter && instrument.filters?.length);
+    filterWrap.hidden = !show;
+    filterSelect.innerHTML = show ? optionEls(instrument.filters) : '';
+  }
   facilitySelect.addEventListener('change', updateInstruments);
-  instrumentSelect.addEventListener('change', () => modeSelect && updateModes());
+  instrumentSelect.addEventListener('change', () => {
+    if (modeSelect) updateModes();
+    if (filterSelect) updateFilter();
+  });
   updateInstruments();
 }
 
@@ -297,6 +318,8 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
     form.querySelector('fieldset[data-type="trigger"] [data-role="facility"]'),
     form.querySelector('fieldset[data-type="trigger"] [data-role="instrument"]'),
     form.querySelector('fieldset[data-type="trigger"] [data-role="mode"]'),
+    form.querySelector('fieldset[data-type="trigger"] [data-role="filter"]'),
+    form.querySelector('fieldset[data-type="trigger"] [data-role="filter-wrap"]'),
   );
   wireFacilityCascade(
     form,
@@ -328,8 +351,8 @@ function wireAddTaskForm(container, ctx, candidate, facilities) {
             facility: values.facility,
             instrument: values.instrument,
             mode: values.mode,
+            filterBand: values.filterBand || null,
             requestedDate: values.requestedDate,
-            exposure: values.exposure,
             images: values.images.split(',').map((s) => s.trim()).filter(Boolean),
           }
         : type === 'observation'

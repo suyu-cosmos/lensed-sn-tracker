@@ -48,7 +48,6 @@ describe('buildTaskIssue', () => {
       instrument: 'xshooter',
       mode: 'spectroscopy',
       requestedDate: '2026-09-20',
-      exposure: '4x600s',
       images: ['A', 'B'],
     });
 
@@ -58,7 +57,21 @@ describe('buildTaskIssue', () => {
     const { data } = parseIssueBody(body);
     expect(data.cand).toBe('LSN-test');
     expect(data.pi_contacted).toBe(false);
+    expect(data.exposure).toBeNull(); // not collected by the app's form on purpose — left for the PI/automation to fill in
     expect(data.images).toEqual(['A', 'B']);
+  });
+
+  it('builds a trigger sub-issue with a filter band, for single_filter instruments like WFI', () => {
+    const { body } = buildTaskIssue('LSN-test', 'trigger', {
+      facility: 'mpg22',
+      instrument: 'wfi',
+      mode: 'imaging',
+      filterBand: 'R',
+      requestedDate: '2026-09-20',
+      images: [],
+    });
+    const { data } = parseIssueBody(body);
+    expect(data.filter).toBe('R');
   });
 
   it('builds an observation sub-issue preserving the filters/setup key', () => {
