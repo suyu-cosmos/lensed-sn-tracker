@@ -77,7 +77,7 @@ export function render(container, ctx) {
   container.innerHTML = `
     <h1>New candidate</h1>
     <form id="new-candidate-form" class="card">
-      <p class="muted">Only <strong>id</strong>, coordinates and a <strong>main lead</strong> are required — everything else can be filled in later.</p>
+      <p class="muted">Only <strong>id</strong>, <strong>coordinates</strong> and a <strong>main lead</strong> are required — everything else can be filled in later.</p>
 
       <label>Candidate id * <input name="id" required placeholder="LSN-2026abc" /></label>
       <label>TNS name <input name="tnsName" placeholder="SN 2026abc" /></label>
