@@ -4,9 +4,61 @@
 // matters, since it's what keeps app-created issues and hand-filed ones
 // interchangeable.
 
-import { describe, it, expect } from 'vitest';
-import { buildCandidateIssue, buildTaskIssue, buildTriggerMailto } from '../src/lib/write.js';
-import { parseIssueBody } from '../src/lib/yaml.js';
+import { describe, it, expect, vi } from 'vitest';
+import { buildCandidateIssue, buildTaskIssue, buildTriggerMailto, changeCandidateStatus } from '../src/lib/write.js';
+import { parseIssueBody, stringifyIssueBody } from '../src/lib/yaml.js';
+
+/** A fake Octokit client whose issue has the given body data + label names. */
+function mockClient(data, labelNames) {
+  const issues = {
+    get: vi.fn(async () => ({
+      data: { body: stringifyIssueBody(data, '', 'candidate'), labels: labelNames.map((name) => ({ name })) },
+    })),
+    update: vi.fn(async () => ({})),
+    addLabels: vi.fn(async () => ({})),
+    removeLabel: vi.fn(async () => ({})),
+  };
+  return { client: { rest: { issues } }, issues };
+}
+
+describe('changeCandidateStatus', () => {
+  const repo = { owner: 'o', name: 'r' };
+  const candidate = { issue: { number: 11 } };
+
+  it('removes every other status:* label, not just the one named in the body', async () => {
+    // Reproduces the drift seen on a real issue: body says lensed_sn, but a
+    // stale status:awaiting_confirmation label is still attached too.
+    const { client, issues } = mockClient({ id: 'X', status: 'lensed_sn' }, [
+      'type:candidate',
+      'status:awaiting_confirmation',
+      'status:lensed_sn',
+      'cand:X',
+    ]);
+    const next = await changeCandidateStatus(client, repo, candidate, 'post_fade');
+
+    expect(next.status).toBe('post_fade');
+    expect(issues.addLabels).toHaveBeenCalledWith(expect.objectContaining({ labels: ['status:post_fade'] }));
+    const removed = issues.removeLabel.mock.calls.map(([args]) => args.name).sort();
+    expect(removed).toEqual(['status:awaiting_confirmation', 'status:lensed_sn']);
+  });
+
+  it("still removes the body's old status label even if the label list is stale", async () => {
+    const { client, issues } = mockClient({ id: 'X', status: 'new_candidate' }, ['type:candidate']);
+    await changeCandidateStatus(client, repo, candidate, 'awaiting_confirmation');
+    expect(issues.removeLabel.mock.calls.map(([args]) => args.name)).toEqual(['status:new_candidate']);
+  });
+
+  it('never removes non-status labels or the new status label', async () => {
+    const { client, issues } = mockClient({ id: 'X', status: 'lensed_sn' }, [
+      'type:candidate',
+      'priority:high',
+      'cand:X',
+      'status:lensed_sn',
+    ]);
+    await changeCandidateStatus(client, repo, candidate, 'lensed_sn');
+    expect(issues.removeLabel).not.toHaveBeenCalled();
+  });
+});
 
 describe('buildCandidateIssue', () => {
   it('round-trips through parseIssueBody with matching title/labels', () => {

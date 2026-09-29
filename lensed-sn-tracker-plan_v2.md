@@ -408,16 +408,17 @@ existing candidates working (only additive keys, except the one rename already d
 **Step 0 — done.** Renamed `awaiting_classification_spectrum` → `awaiting_confirmation`
 (rules.yaml, `status:` label via `setup-labels.js --rename`).
 
-**Step 1 — fix status-label drift (bug).** `changeCandidateStatus` (`src/lib/write.js`) removes
-only the status label named in the body it just read, so one stale read leaves two `status:*`
-labels on an issue (seen on #11). Fix: after writing, remove *every* `status:*` label except
-the new one, using the labels on the freshly fetched issue. Add a unit test with a mocked client.
+**Step 1 — fix status-label drift (bug). [done]** `changeCandidateStatus` (`src/lib/write.js`)
+used to remove only the status label named in the body it just read, so one stale read left two
+`status:*` labels on an issue (seen on #11). Now it removes *every* `status:*` label except the
+new one (union of the fresh issue's labels and the body's old status). Covered by mocked-client
+tests in `test/write.test.js`; audited that every live candidate has exactly one status label.
 
 **Step 2 — data model (lensed-sn-data).**
 - `rules.yaml`: relabel `lensed_sn` → "Live follow-up"; add `post_fade`, `data_complete`
   (terminal); add the top-level `tracks:` list and each status's `tracks:` key exactly as in §6.
-- `facilities.yaml`: add `hst` (`space_based: true`; instruments to be confirmed with the
-  coordinator, e.g. WFC3/UVIS, WFC3/IR, ACS, STIS).
+- `facilities.yaml`: add `hst` **[done]** — `space_based: true`, WFC3/UVIS (`wfc3_uvis`) and
+  WFC3/IR (`wfc3_ir`), PI `shsuyu` (TBC); `facility:hst` label created.
 - `setup-labels.js`: create `track:<id>` labels from `rules.yaml` tracks; add `blue` (and any
   other new colour) to `STATUS_COLORS`.
 - Issue templates: `candidate.yml` gains `time_delays.reference_image/predicted_err/measured_err`

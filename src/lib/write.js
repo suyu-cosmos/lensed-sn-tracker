@@ -5,7 +5,7 @@
 // candidate.js's add-task form) can't drift out of sync with each other or
 // with the issue templates in lensed-sn-data.
 
-import { getIssue, updateIssueBody, addLabels, removeLabel } from './github.js';
+import { getIssue, updateIssueBody, addLabels, removeLabel, labelName } from './github.js';
 import { parseIssueBody, stringifyIssueBody } from './yaml.js';
 import { formatUtc } from './format.js';
 import { resolveRole, findPerson } from './rules.js';
@@ -218,9 +218,20 @@ export async function changeCandidateStatus(client, dataRepo, candidate, newStat
   const body = stringifyIssueBody(nextData, notes, 'candidate');
 
   await updateIssueBody(client, dataRepo, candidate.issue.number, body);
-  await addLabels(client, dataRepo, candidate.issue.number, [`status:${newStatusId}`]);
-  if (oldStatusId && oldStatusId !== newStatusId) {
-    await removeLabel(client, dataRepo, candidate.issue.number, `status:${oldStatusId}`);
+  const newLabel = `status:${newStatusId}`;
+  await addLabels(client, dataRepo, candidate.issue.number, [newLabel]);
+
+  // Remove EVERY other status:* label, not just the one the body named —
+  // removing only `status:<oldStatusId>` let a single stale read leave a
+  // second status label behind (seen on a real issue: plan §8 M2.5 Step 1).
+  // Union of the labels actually on the issue and the body's old status,
+  // so either source being stale is covered.
+  const stale = new Set(
+    (fresh.labels ?? []).map(labelName).filter((name) => name.startsWith('status:') && name !== newLabel),
+  );
+  if (oldStatusId && oldStatusId !== newStatusId) stale.add(`status:${oldStatusId}`);
+  for (const name of stale) {
+    await removeLabel(client, dataRepo, candidate.issue.number, name);
   }
 
   return nextData;
