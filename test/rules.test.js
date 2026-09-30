@@ -188,6 +188,19 @@ describe('dashboard summaries', () => {
     expect(nextAction(r, cand, [t('phot', 'open')])).toEqual({ kind: 'task', text: '[Phot] task-phot' });
     expect(nextAction(r, { status: 'data_complete' }, [])).toEqual({ kind: 'step', text: 'Close tasks' });
   });
+
+  it('never suggests starting an optional track (confirmation is spectroscopy OR imaging)', () => {
+    const conf = {
+      statuses: [{ id: 'new_candidate', tracks: ['phot_conf', 'spec_conf'], next_steps: ['Confirm lensing nature'] }],
+      tracks: [
+        { id: 'phot_conf', label: 'Photometric confirmation', optional: true },
+        { id: 'spec_conf', label: 'Spectroscopic confirmation', optional: true },
+      ],
+    };
+    const c = { status: 'new_candidate' };
+    expect(nextAction(conf, c, [])).toEqual({ kind: 'step', text: 'Confirm lensing nature' });
+    expect(nextAction(conf, c, [t('spec_conf', 'closed')])).toEqual({ kind: 'step', text: 'Confirm lensing nature' });
+  });
 });
 
 describe('phase-relevant roles', () => {

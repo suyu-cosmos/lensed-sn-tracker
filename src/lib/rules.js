@@ -217,7 +217,7 @@ export function taskDueDate(task) {
  * The single most useful next action for a candidate, as { text, kind }:
  * 1. 'task'     — earliest-due open task (prefixed with its track's short name)
  * 2. 'image'    — a trailing image eligible for a per-image track but not targeted
- * 3. 'track'    — a track of this phase that hasn't started (not merely waiting)
+ * 3. 'track'    — a non-`optional` track of this phase that hasn't started (not merely waiting)
  * 4. 'task'     — any other open task
  * 5. 'step'     — the phase's first next_step from rules.yaml
  */
@@ -243,7 +243,7 @@ export function nextAction(rules, candidate, tasks) {
     const untargeted = eligibleImages(track, candidate, tasks).find((e) => !e.targeted);
     if (untargeted) return { kind: 'image', text: `${track.short ?? track.label ?? track.id}: image ${untargeted.image} detected — not targeted yet` };
   }
-  const notStarted = phaseTracks.find((track) => trackState(track, tasks, candidate) === 'not_started');
+  const notStarted = phaseTracks.find((track) => !track.optional && trackState(track, tasks, candidate) === 'not_started');
   if (notStarted) return { kind: 'track', text: `Start ${notStarted.label ?? notStarted.id}` };
 
   if (open.length) return { kind: 'task', text: withTrack(open[0]) };

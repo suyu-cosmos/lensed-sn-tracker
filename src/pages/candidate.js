@@ -306,6 +306,7 @@ function renderTrackCard(track, data, tasks, people) {
         <h3>${escapeHtml(track.label ?? track.id)}</h3>
         <span class="track-state state-${state}">${TRACK_STATE_LABEL[state]}</span>
       </div>
+      ${track.optional ? '<p class="muted">Optional — not every candidate needs this track.</p>' : ''}
       <p class="muted">Owner: ${escapeHtml(ownerName)}${track.role ? ` (${escapeHtml(track.role)})` : ''}${cadence}</p>
       ${purposes ? `<ul class="purposes">${purposes}</ul>` : ''}
       ${imagesHtml}
@@ -314,18 +315,30 @@ function renderTrackCard(track, data, tasks, people) {
     </div>`;
 }
 
-/** Track cards for the current phase, plus an "Other tasks" card; phases without tracks keep the flat table. */
+/**
+ * Track cards for the current phase, then tasks from other phases' tracks
+ * (e.g. confirmation triggers once live — filed correctly, just not current),
+ * then "Other tasks" (untracked / unknown track, with a "move to…" control).
+ * Phases without tracks keep the flat table.
+ */
 function renderTrackSection(ctx, data, tasks) {
   const tracks = tracksForStatus(ctx.rules, data.status);
   if (!tracks.length) return `<h2>Tasks</h2>${renderTasks(tasks, { track: true, rules: ctx.rules })}`;
   const inPhase = new Set(tracks.map((t) => t.id));
-  const other = tasks.filter((t) => !inPhase.has(t.data?.track));
+  const knownTrack = new Set((ctx.rules.tracks ?? []).map((t) => t.id));
+  const earlier = tasks.filter((t) => t.data?.track && !inPhase.has(t.data.track) && knownTrack.has(t.data.track));
+  const other = tasks.filter((t) => !inPhase.has(t.data?.track) && !earlier.includes(t));
   return `
     <h2>Follow-up tracks</h2>
     <div class="track-grid">${tracks.map((track) => renderTrackCard(track, data, tasks, ctx.people)).join('')}</div>
     ${
+      earlier.length
+        ? `<details class="card"><summary><h3>Tasks from other phases (${earlier.length})</h3></summary><p class="muted">Filed under tracks that belong to another phase (e.g. confirmation triggers).</p>${renderTasks(earlier, { track: true, rules: ctx.rules })}</details>`
+        : ''
+    }
+    ${
       other.length
-        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or from a track that isn't part of this phase. Use "move to…" to file a task under one of this phase's tracks.</p>${renderTasks(other, { track: true, rules: ctx.rules, moveTo: tracks })}<span id="move-task-error" class="error"></span></div>`
+        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or with an unknown track. Use "move to…" to file a task under one of this phase's tracks.</p>${renderTasks(other, { track: true, rules: ctx.rules, moveTo: tracks })}<span id="move-task-error" class="error"></span></div>`
         : ''
     }`;
 }

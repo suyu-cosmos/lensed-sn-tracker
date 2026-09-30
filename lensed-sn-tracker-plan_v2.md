@@ -215,6 +215,7 @@ statuses:
   - id: new_candidate
     label: New candidate
     color: gray
+    tracks: [phot_confirmation, spec_confirmation]
     next_steps:
       - "Confirm lensing nature through classification spectroscopy (SN redshift, lens redshift, SN type)"
       - "Confirm the main lead (group default, or pick someone on the Roles card)"
@@ -224,6 +225,7 @@ statuses:
   - id: awaiting_confirmation        # renamed from awaiting_classification_spectrum (done)
     label: Awaiting confirmation
     color: amber
+    tracks: [phot_confirmation, spec_confirmation]
     next_steps:
       - "Spectroscopy: show z_SN > z_lens"
       - "Or imaging (ideally high-resolution) showing multiple variable SN images"
@@ -283,6 +285,18 @@ alerts:
 
 # Follow-up TRACKS (Milestone 2.5, §6.2): parallel workstreams inside a phase.
 tracks:
+  - id: phot_confirmation          # new_candidate + awaiting_confirmation
+    label: Photometric confirmation
+    role: photometry_lead
+    task_type: trigger
+    modes: [imaging, nir_imaging]
+    optional: true                   # confirmation is spectroscopy OR imaging
+  - id: spec_confirmation
+    label: Spectroscopic confirmation
+    role: spectroscopy_lead
+    task_type: trigger
+    modes: [spectroscopy, ifu]
+    optional: true
   - id: phot_monitoring
     label: Photometric monitoring
     role: photometry_lead
@@ -358,6 +372,13 @@ parallel; step 4 is gated on an *event* while 3a keeps running), so it is modell
   it. A track carries its purposes, responsible role, allowed modes/instruments/facilities,
   default cadence, and optionally an event gate (`starts_on`) and `per_image`. Every task
   records its `track` (and `image` for per-image tracks).
+- **Confirmation tracks:** `new_candidate` and `awaiting_confirmation` both list
+  `phot_confirmation` and `spec_confirmation`. Both are `optional: true` — either one can
+  confirm — so the next-action never says "Start …" for an optional track. Once the candidate
+  moves on, their tasks show in a collapsed "Tasks from other phases" card (correctly filed,
+  just not current), separate from "Other tasks" (untracked / unknown track, with "move to…").
+- **Trigger assignees:** a trigger task is assigned to the program PI (instrument `pi:` over
+  facility `contact.pi`) plus the holder of the track's `role`, deduped.
 - **Step 4 is a track, not a phase**, because photometric monitoring must continue while
   early-phase spectroscopy of the next image runs.
 - **Track state** is derived, never stored: *waiting* (a `starts_on` event hasn't happened),

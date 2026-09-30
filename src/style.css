@@ -246,7 +246,9 @@ details.role-overrides { margin: 0.5rem 0 1rem; }
 details.role-overrides > :not(summary) { margin-left: 1.25rem; }
 details.role-overrides[open] { padding-bottom: 0.25rem; border-left: 3px solid var(--border); padding-left: 0.5rem; }
 details.role-overrides summary { cursor: pointer; }
-details.role-overrides summary h3 { display: inline; }
+details.role-overrides summary h3,
+details.card summary h3 { display: inline; }
+details.card summary { cursor: pointer; }
 fieldset.phase-roles legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.3rem; }
 #roles-card .track-head h2 { margin: 0; }
 
