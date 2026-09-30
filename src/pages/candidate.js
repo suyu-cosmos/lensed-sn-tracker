@@ -8,7 +8,7 @@
 // separation) rather than a plotted altitude curve — the same numbers a
 // curve would be read off of.
 
-import { loadCandidateDetail, facilityById, buildTaskFromIssue, mergeTasks } from '../lib/data.js';
+import { loadCandidateDetail, refreshCandidate, facilityById, buildTaskFromIssue, mergeTasks } from '../lib/data.js';
 import {
   getStatus,
   findPerson,
@@ -978,9 +978,20 @@ function wireImageTimelineForm(container, ctx, candidate, tasks, comments) {
   });
 }
 
+// Only one candidate page is on screen at a time; its "refresh when the tab
+// becomes visible again" listener is replaced on every render().
+let onVisible = null;
+
+function markDirty(event) {
+  event.currentTarget.dataset.dirty = '1';
+}
+
 export async function render(container, ctx, params) {
   const { candidates, client } = ctx;
   const candidate = findCandidate(candidates, params.id);
+
+  if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+  onVisible = null;
 
   if (!candidate) {
     container.innerHTML = `<p class="error">No candidate found for "${escapeHtml(params.id)}".</p>`;
@@ -990,6 +1001,37 @@ export async function render(container, ctx, params) {
   container.innerHTML = '<p class="muted">Loading candidate…</p>';
   const { tasks, comments } = await loadCandidateDetail(client, candidate);
   renderCandidatePage(container, ctx, candidate, tasks, comments);
+
+  // Coming back to this tab (e.g. after closing a task on GitHub) re-reads
+  // GitHub — unless the user has started filling in a form here, which a
+  // re-render would wipe; then the ↻ Refresh button is the way.
+  const hash = window.location.hash;
+  onVisible = () => {
+    if (document.visibilityState !== 'visible' || window.location.hash !== hash || !container.isConnected) return;
+    if (container.dataset.dirty === '1') return;
+    refreshCandidatePage(container, ctx, candidate);
+  };
+  document.addEventListener('visibilitychange', onVisible);
+}
+
+/** Re-read the candidate issue, its tasks and comments from GitHub and re-render. */
+async function refreshCandidatePage(container, ctx, candidate) {
+  const button = container.querySelector('#refresh-candidate');
+  if (button) {
+    button.disabled = true;
+    button.textContent = '↻ Refreshing…';
+  }
+  try {
+    await refreshCandidate(ctx.client, candidate);
+    const { tasks, comments } = await loadCandidateDetail(ctx.client, candidate);
+    renderCandidatePage(container, ctx, candidate, tasks, comments);
+  } catch (err) {
+    if (button) {
+      button.disabled = false;
+      button.textContent = '↻ Refresh';
+    }
+    container.querySelector('#refresh-error')?.replaceChildren(`Could not refresh: ${err.message}`);
+  }
 }
 
 /**
@@ -1018,6 +1060,9 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
       ${data ? `Main lead: <strong>${escapeHtml(findPerson(people, resolveRole(data, 'main_lead', people).personId)?.name ?? 'unassigned')}</strong> · ` : ''}
       ${escapeHtml(data?.tns_name ?? '')} ·
       <a href="${candidate.issue.html_url}" target="_blank" rel="noreferrer">issue #${candidate.issue.number}</a>
+      · <button type="button" class="linklike" id="refresh-candidate" title="Re-read this candidate and its tasks from GitHub (also happens automatically when you return to this tab)">↻ Refresh</button>
+      <span class="muted">updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+      <span id="refresh-error" class="error"></span>
     </p>
 
     ${rolesSection}
@@ -1044,6 +1089,11 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
 
     ${candidate.notes ? `<h2>Notes</h2><div class="card">${escapeHtml(candidate.notes)}</div>` : ''}
   `;
+
+  // Any typing in a form marks the page dirty, so a tab-refocus refresh won't wipe it.
+  container.dataset.dirty = '0';
+  container.addEventListener('input', markDirty); // same function reference, so re-renders never stack it
+  container.querySelector('#refresh-candidate')?.addEventListener('click', () => refreshCandidatePage(container, ctx, candidate));
 
   if (data) {
     wireChangeStatusForm(container, ctx, candidate, rules, tasks);

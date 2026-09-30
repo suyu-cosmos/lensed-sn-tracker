@@ -7,7 +7,15 @@
 import { Octokit } from 'octokit';
 
 export function makeClient(token) {
-  return new Octokit({ auth: token });
+  // GitHub sends `Cache-Control: private, max-age=60`, so by default the
+  // browser may answer a repeat request from its own cache for up to a minute
+  // — an issue closed on GitHub would still look open after a refresh.
+  // `no-cache` always revalidates with GitHub (via ETag; an unchanged 304
+  // doesn't count against the rate limit), so every read is current.
+  return new Octokit({
+    auth: token,
+    request: { fetch: (url, options) => fetch(url, { ...options, cache: 'no-cache' }) },
+  });
 }
 
 /** Decode a repo file fetched via contents API (base64) to a UTF-8 string. */

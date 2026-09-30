@@ -192,6 +192,13 @@ Cloudflare Worker, per the plan) replaces this without touching
 today rather than OAuth: the write features were higher-value to build
 first and don't depend on which auth flow hands the app its token.
 
+**Freshness.** `makeClient` sets `cache: 'no-cache'` on every fetch, because
+GitHub's `Cache-Control: max-age=60` otherwise lets the browser serve a
+minute-old list. The candidate page re-reads GitHub (`refreshCandidate` +
+`loadCandidateDetail`) on its ↻ Refresh button and when the tab becomes
+visible again — skipped if any form on the page has been typed into
+(`container.dataset.dirty`), so a refresh never wipes half-entered input.
+
 **Candidate page layout (Milestone 2.5).** `renderCandidatePage` builds, in
 order: header + Change-status (with the all-images-faded → post_fade *hint*),
 Visibility, Suggested next steps, **Image timeline** (edits `image_dates` via

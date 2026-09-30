@@ -3,7 +3,7 @@
 // from this instead of touching Octokit/YAML parsing themselves.
 
 import configJson from '../../config.json';
-import { makeClient, fetchTextFile, listCandidateIssues, listCandidateSubIssues, listComments, labelName } from './github.js';
+import { makeClient, fetchTextFile, getIssue, listCandidateIssues, listCandidateSubIssues, listComments, labelName } from './github.js';
 import { parseYamlFile, parseIssueBody } from './yaml.js';
 
 export const config = configJson;
@@ -33,6 +33,18 @@ export async function loadAppData(token) {
     .filter((c) => c.data !== null || c.issue.body);
 
   return { client, config, facilities, people, rules, candidates };
+}
+
+/**
+ * Re-read one candidate's own issue (a single-issue GET, which doesn't have
+ * the label-filtered list's lag) and update the candidate object in place,
+ * so ctx.candidates sees the change too. For picking up edits made on GitHub.
+ */
+export async function refreshCandidate(client, candidate) {
+  const issue = await getIssue(client, config.dataRepo, candidate.issue.number);
+  const { data, notes } = parseIssueBody(issue.body);
+  Object.assign(candidate, { issue, data, notes });
+  return candidate;
 }
 
 /** Build one {issue, type, data, notes} task entry from a raw GitHub issue. */
