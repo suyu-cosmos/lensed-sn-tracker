@@ -43,6 +43,19 @@ export function buildTaskFromIssue(issue) {
 }
 
 /** Sub-issues (tasks) and threaded comments for one candidate, fetched on demand. */
+/**
+ * Combine a just-refetched task list with tasks the page already knew about
+ * (incl. one it just created). The label-filtered list can lag behind recent
+ * writes and omit an issue created moments ago, so a refetch alone must never
+ * drop a known task: fresh copies win, known-but-missing ones are kept.
+ * Newest issue first, like the list endpoint.
+ */
+export function mergeTasks(fresh, known) {
+  const byNumber = new Map(known.map((t) => [t.issue.number, t]));
+  for (const t of fresh) byNumber.set(t.issue.number, t);
+  return [...byNumber.values()].sort((a, b) => b.issue.number - a.issue.number);
+}
+
 export async function loadCandidateDetail(client, candidate) {
   const { dataRepo } = config;
   const candidateId = candidate.data?.id;

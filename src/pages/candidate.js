@@ -8,7 +8,7 @@
 // separation) rather than a plotted altitude curve — the same numbers a
 // curve would be read off of.
 
-import { loadCandidateDetail, facilityById, buildTaskFromIssue } from '../lib/data.js';
+import { loadCandidateDetail, facilityById, buildTaskFromIssue, mergeTasks } from '../lib/data.js';
 import {
   getStatus,
   findPerson,
@@ -559,7 +559,7 @@ function wireFacilityCascade({ facilities, facilitySelect, instrumentSelect, mod
   return { refresh: updateFacilities };
 }
 
-function wireChangeStatusForm(container, ctx, candidate, rules) {
+function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
   const form = container.querySelector('#status-form');
   if (!form) return;
   const select = form.querySelector('select[name="newStatus"]');
@@ -623,7 +623,7 @@ function wireChangeStatusForm(container, ctx, candidate, rules) {
       const nextData = await changeCandidateStatus(ctx.client, ctx.config.dataRepo, candidate, newStatusId, extraFields);
       candidate.data = nextData;
       const { tasks, comments } = await loadCandidateDetail(ctx.client, candidate);
-      renderCandidatePage(container, ctx, candidate, tasks, comments);
+      renderCandidatePage(container, ctx, candidate, mergeTasks(tasks, knownTasks), comments);
     } catch (err) {
       errorEl.textContent = `Could not update status: ${err.message}`;
       submitBtn.disabled = false;
@@ -836,15 +836,12 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
         bannerHtml += `<p class="card unassigned">⚠️ ${escapeHtml(reminder)}</p>`;
       }
 
-      // loadCandidateDetail's label-filtered list has the same brief
-      // propagation lag right after creation as the new-candidate case
-      // (see CLAUDE.md) — merge the task we just made in ourselves rather
-      // than trusting the refetch to already include it.
+      // loadCandidateDetail's label-filtered list lags behind recent creates
+      // (see CLAUDE.md) and can omit this task *and* one added a minute ago —
+      // merge the refetch with every task this page already knew about.
       const fresh = await loadCandidateDetail(ctx.client, candidate);
-      if (!fresh.tasks.some((t) => t.issue.number === issue.number)) {
-        fresh.tasks.unshift(buildTaskFromIssue(issue));
-      }
-      renderCandidatePage(container, ctx, candidate, fresh.tasks, fresh.comments);
+      const merged = mergeTasks(fresh.tasks, [buildTaskFromIssue(issue), ...tasks]);
+      renderCandidatePage(container, ctx, candidate, merged, fresh.comments);
       if (bannerHtml) {
         const freshMailtoEl = container.querySelector('#trigger-mailto');
         if (freshMailtoEl) freshMailtoEl.innerHTML = bannerHtml;
@@ -1049,7 +1046,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
   `;
 
   if (data) {
-    wireChangeStatusForm(container, ctx, candidate, rules);
+    wireChangeStatusForm(container, ctx, candidate, rules, tasks);
     wireRolesForm(container, ctx, candidate, tasks, comments);
     wireImageTimelineForm(container, ctx, candidate, tasks, comments);
     wireMoveToTrack(container, ctx, candidate, tasks, comments);

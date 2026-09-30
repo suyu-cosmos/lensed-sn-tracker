@@ -269,7 +269,9 @@ Things worth knowing before touching this:
     parses its `.body` and pushes `{ issue, data, notes }` straight into
     `ctx.candidates`; `wireAddTaskForm` does the same for a new task via
     `buildTaskFromIssue(issue)` (`src/lib/data.js`), merging it into
-    whatever `loadCandidateDetail` returned if it's missing there.
+    whatever `loadCandidateDetail` returned via `mergeTasks` — together with
+    every task the page already held, since the lagging list can omit a task
+    created a minute earlier too (two triggers added back to back).
     `changeCandidateStatus` already returns the fully-updated `nextData`
     — `wireChangeStatusForm` assigns it straight onto `candidate.data`
     (same object reference held in `ctx.candidates`) rather than

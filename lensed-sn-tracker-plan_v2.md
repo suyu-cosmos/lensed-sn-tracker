@@ -217,7 +217,7 @@ statuses:
     color: gray
     tracks: [phot_confirmation, spec_confirmation]
     next_steps:
-      - "Confirm lensing nature through classification spectroscopy (SN redshift, lens redshift, SN type)"
+      - "Confirm lensing nature through classification spectroscopy (SN redshift, lens redshift, SN type) and/or photometric data (e.g. AO image showing multiple SN images)"
       - "Confirm the main lead (group default, or pick someone on the Roles card)"
       - "Request high-resolution imaging (if not yet available through Euclid)"
     transitions:
