@@ -52,10 +52,14 @@ describe('eligibleImages', () => {
   });
 
   it('flags an image targeted only when this track has a task for it', () => {
-    const tasks = [task('next_image_early_phase_spec', 'open', 'B'), task('phot_monitoring', 'open', 'C')];
+    const tasks = [
+      task('next_image_early_phase_spec', 'open', 'B'),
+      task('next_image_early_phase_spec', 'closed', 'B'), // several tasks per image are allowed
+      task('phot_monitoring', 'open', 'C'),
+    ];
     expect(eligibleImages(early, candidate, tasks)).toEqual([
-      { image: 'B', detected: '2026-09-10', targeted: true },
-      { image: 'C', detected: '2026-09-20', targeted: false },
+      { image: 'B', detected: '2026-09-10', taskCount: 2, targeted: true },
+      { image: 'C', detected: '2026-09-20', taskCount: 0, targeted: false },
     ]);
   });
 

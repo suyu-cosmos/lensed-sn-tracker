@@ -112,7 +112,8 @@ export function referenceImage(candidate) {
 
 /**
  * For a `per_image` track: every trailing (non-reference) image that has a
- * `detected` date, each flagged `targeted` if a task in this track names it.
+ * `detected` date, each flagged `targeted` if a task in this track names it
+ * (with `taskCount` — an image can have any number of tasks).
  * Eligible-but-untargeted is a normal, complete outcome (plan §6.2) — in
  * practice only the second-appearing image is usually targeted.
  */
@@ -125,6 +126,7 @@ export function eligibleImages(track, candidate, tasks = []) {
     .map(([image, dates]) => ({
       image,
       detected: dates.detected,
+      taskCount: trackTasks.filter((t) => t.data?.image === image).length, // an image may get several tasks (e.g. repeat epochs)
       targeted: trackTasks.some((t) => t.data?.image === image),
     }))
     .sort((a, b) => String(a.detected).localeCompare(String(b.detected)));

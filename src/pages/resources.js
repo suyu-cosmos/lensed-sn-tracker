@@ -15,8 +15,7 @@ function rowsFor(facility, people) {
     const contactName = findPerson(people, holderId)?.name ?? holderId ?? '—';
     // An instrument's own semester_start/semester_end override the
     // facility-level access.semester_start/semester_end for that
-    // instrument only (facilities.yaml) — e.g. vlt's SOXS has a different
-    // access window than MUSE/FORS2. Show a range only when a start is
+    // instrument only (facilities.yaml). Show a range only when a start is
     // defined, else just the end date (which may itself be free text like
     // "2028-04-30 (TBC)" rather than a strict date).
     const semesterStart = instrument.semester_start ?? facility.access?.semester_start;

@@ -292,9 +292,9 @@ function renderTrackCard(track, data, tasks, people) {
           .map(
             (e) => `<li>Image <strong>${escapeHtml(e.image)}</strong> <span class="muted">(detected ${escapeHtml(e.detected)})</span>: ${
               e.targeted
-                ? '<span class="track-state state-done">targeted</span>'
-                : `<span class="muted">not targeted</span> <button type="button" class="linklike" data-add-task data-track="${escapeHtml(track.id)}" data-image="${escapeHtml(e.image)}">+ Add for image ${escapeHtml(e.image)}</button>`
-            }</li>`,
+                ? `<span class="track-state state-done">targeted</span> <span class="muted">(${e.taskCount} task${e.taskCount === 1 ? '' : 's'})</span>`
+                : '<span class="muted">not targeted</span>'
+            } <button type="button" class="linklike" data-add-task data-track="${escapeHtml(track.id)}" data-image="${escapeHtml(e.image)}">+ Add ${e.targeted ? 'another ' : ''}for image ${escapeHtml(e.image)}</button></li>`,
           )
           .join('')}</ul>`
       : '<p class="muted">Waiting for a trailing image to be detected — record its date in the Image timeline above.</p>';
@@ -689,7 +689,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
       imageSelect.innerHTML = eligible.length
         ? optionEls(
             eligible.map((e) => e.image),
-            eligible.map((e) => `${e.image} (detected ${e.detected})${e.targeted ? ' — already targeted' : ''}`),
+            eligible.map((e) => `${e.image} (detected ${e.detected})${e.targeted ? ` — ${e.taskCount} task${e.taskCount === 1 ? '' : 's'} so far` : ''}`),
           )
         : '<option value="">no trailing image detected yet</option>';
       if (preselectImage) imageSelect.value = preselectImage;

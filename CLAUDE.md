@@ -228,7 +228,7 @@ Things worth knowing before touching this:
   static facility field.** To is the program PI — an instrument's own
   `pi:` overrides the facility-level `contact.pi` (facilities.yaml), since
   one facility can host more than one program with a different PI (vlt's
-  SOXS vs. MUSE/FORS2). CC is the group-default lead matching the
+  MUSE/FORS2 vs. its facility-level PI). CC is the group-default lead matching the
   instrument's mode (`LEAD_ROLE_BY_MODE`: spectroscopy/ifu ->
   spectroscopy_lead, imaging/nir_imaging -> photometry_lead) plus
   `main_lead`, both resolved via `resolveRole` so a candidate's own

@@ -294,13 +294,13 @@ describe('Milestone 2.5 track fields', () => {
 
   it('a trigger is assigned to both the program PI and the track role holder (instrument pi overrides facility pi)', () => {
     const facilities = [
-      { id: 'vlt', contact: { pi: 'facpi' }, instruments: [{ id: 'muse', pi: 'musepi' }, { id: 'soxs' }] },
+      { id: 'vlt', contact: { pi: 'facpi' }, instruments: [{ id: 'muse', pi: 'musepi' }, { id: 'fors2' }] },
     ];
     const ctx = { rules, candidate: { id: 'X' }, peopleData, facilities };
     const muse = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse', mode: 'ifu', images: [] }, ctx);
     expect(muse.assignees).toEqual(['musepi', 'stefant']);
-    const soxs = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'soxs', mode: 'spectroscopy', images: [] }, ctx);
-    expect(soxs.assignees).toEqual(['facpi', 'stefant']);
+    const fors2 = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'fors2', mode: 'spectroscopy', images: [] }, ctx);
+    expect(fors2.assignees).toEqual(['facpi', 'stefant']);
     // PI who also holds the role is assigned once; non-trigger tasks get no PI.
     const same = buildTaskIssue('X', 'trigger', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse', mode: 'ifu', images: [] }, {
       ...ctx,
@@ -319,7 +319,7 @@ describe('Milestone 2.5 track fields', () => {
   });
 
   it('observations carry an epochs list', () => {
-    const { body } = buildTaskIssue('X', 'observation', { facility: 'vlt', instrument: 'soxs' });
+    const { body } = buildTaskIssue('X', 'observation', { facility: 'ntt', instrument: 'soxs' });
     expect(parseIssueBody(body).data.epochs).toEqual([]);
   });
 });

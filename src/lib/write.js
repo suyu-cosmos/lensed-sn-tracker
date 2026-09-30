@@ -202,7 +202,7 @@ export function resolvePi(facility, instrument) {
  * Builds the trigger email's recipients and mailto: URL. The "To" is the
  * program PI — an instrument's own `pi:` overrides the facility-level
  * `contact.pi` (facilities.yaml), since one facility can host more than
- * one program (e.g. vlt's SOXS vs. MUSE/FORS2). CC is the relevant
+ * one program (e.g. vlt's MUSE/FORS2 vs. its facility-level PI). CC is the relevant
  * group-default lead for the instrument's mode (LEAD_ROLE_BY_MODE) plus
  * the main lead, resolved via `resolveRole` so a candidate's own
  * `roles_override` still wins exactly as it would anywhere else in the
