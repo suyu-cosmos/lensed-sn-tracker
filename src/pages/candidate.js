@@ -29,6 +29,7 @@ import {
   newlyRelevantRoles,
   assignablePeople,
   taskDueDate,
+  isTerminal,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue, setIssueAssignees } from '../lib/github.js';
@@ -36,6 +37,7 @@ import {
   buildTaskIssue,
   buildTriggerMailto,
   changeCandidateStatus,
+  issueStateFor,
   updateCandidateFields,
   setTaskTrack,
   TASK_TYPES,
@@ -465,7 +467,15 @@ function optionEls(values, labels = values) {
   return values.map((v, i) => `<option value="${escapeHtml(v)}">${escapeHtml(labels[i])}</option>`).join('');
 }
 
-function renderChangeStatus(rules, currentStatusId, data) {
+/** "N tasks are still open — …" hint (with links), or '' when none are. */
+function openTasksWarning(tasks, lead) {
+  const open = tasks.filter((t) => t.issue.state === 'open');
+  if (!open.length) return '';
+  const links = open.map((t) => `<a href="${t.issue.html_url}" target="_blank" rel="noreferrer">#${t.issue.number}</a>`).join(', ');
+  return `<p class="hint">${escapeHtml(lead)} ${open.length === 1 ? '1 task is' : `${open.length} tasks are`} still open (${links}) — close ${open.length === 1 ? 'it' : 'them'} on GitHub if no longer needed.</p>`;
+}
+
+function renderChangeStatus(rules, currentStatusId, data, tasks = []) {
   const { declared, other } = transitionsFor(rules, currentStatusId);
   // Hint only — never automatic (plan §8 M2.5 Step 4).
   const fadedHint =
@@ -486,6 +496,7 @@ function renderChangeStatus(rules, currentStatusId, data) {
     <div class="card" id="change-status-card">
       <h2>Change status</h2>
       ${fadedHint}
+      ${isTerminal(rules, currentStatusId) ? openTasksWarning(tasks, 'This candidate is finished, but') : ''}
       <form id="status-form">
         <label>New status
           <select name="newStatus">
@@ -675,7 +686,14 @@ function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
           .map((roleId) => `<label>${escapeHtml(roleId)} ${roleSelect(`roleov:${roleId}`, roleId, ctx.people, overrides[roleId])}</label>`)
           .join('')}</fieldset>`
       : '';
-    extra.innerHTML = requiredHtml + rolesHtml;
+    // Moving into / out of a finished status also closes / reopens the issue.
+    let closeNote = '';
+    if (select.value && isTerminal(rules, select.value) && !isTerminal(rules, candidate.data.status)) {
+      closeNote = `<p class="muted">This also closes the candidate issue on GitHub (as "${issueStateFor(rules, select.value).state_reason === 'not_planned' ? 'not planned' : 'completed'}"); its tasks are left as they are.</p>${openTasksWarning(knownTasks, 'Note:')}`;
+    } else if (select.value && !isTerminal(rules, select.value) && isTerminal(rules, candidate.data.status)) {
+      closeNote = '<p class="muted">This also reopens the candidate issue on GitHub.</p>';
+    }
+    extra.innerHTML = requiredHtml + rolesHtml + closeNote;
   });
 
   form.addEventListener('submit', async (e) => {
@@ -708,8 +726,9 @@ function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
       // the same label-filtered-list propagation lag we already hit for
       // new-candidate and add-task, so it could just as easily hand back
       // the pre-change body and make the update look like it "did nothing".
-      const nextData = await changeCandidateStatus(ctx.client, ctx.config.dataRepo, candidate, newStatusId, extraFields);
+      const nextData = await changeCandidateStatus(ctx.client, ctx.config.dataRepo, candidate, newStatusId, extraFields, rules);
       candidate.data = nextData;
+      candidate.issue = { ...candidate.issue, state: issueStateFor(rules, newStatusId).state };
       const { tasks, comments } = await loadCandidateDetail(ctx.client, candidate);
       renderCandidatePage(container, ctx, candidate, mergeTasks(tasks, knownTasks), comments);
     } catch (err) {
@@ -1154,7 +1173,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
     </p>
 
     ${rolesSection}
-    ${data ? renderChangeStatus(rules, data.status, data) : ''}
+    ${data ? renderChangeStatus(rules, data.status, data, tasks) : ''}
 
     <h2>Visibility</h2>
     ${renderVisibility(data, facilities, rules)}

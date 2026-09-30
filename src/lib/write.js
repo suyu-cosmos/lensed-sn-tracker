@@ -8,7 +8,7 @@
 import { getIssue, updateIssueBody, addLabels, removeLabel, labelName } from './github.js';
 import { parseIssueBody, stringifyIssueBody } from './yaml.js';
 import { formatUtc } from './format.js';
-import { resolveRole, findPerson } from './rules.js';
+import { resolveRole, findPerson, getStatus } from './rules.js';
 
 // Which group-default role gets CC'd on a trigger's PI email, by the
 // instrument's observing mode — spectroscopy/IFU triggers go to
@@ -257,7 +257,23 @@ export function buildTriggerMailto({ candidate, facility, instrument, mode, visi
  * body back, and swaps the `status:*` label to match. This is the one
  * place Milestone 1 left the label and the YAML field able to drift apart.
  */
-export async function changeCandidateStatus(client, dataRepo, candidate, newStatusId, extraFields = {}) {
+/**
+ * The GitHub issue state a candidate in `statusId` should have: closed for a
+ * `terminal` status (as "not planned" if the status says `close_as:
+ * not_planned`, e.g. false_positive; else "completed"), open otherwise — so
+ * moving back out of a finished status reopens the issue.
+ */
+export function issueStateFor(rules, statusId) {
+  const status = getStatus(rules, statusId);
+  if (!status?.terminal) return { state: 'open' };
+  return { state: 'closed', state_reason: status.close_as === 'not_planned' ? 'not_planned' : 'completed' };
+}
+
+/**
+ * Pass `rules` to also open/close the candidate issue to match the new status
+ * (issueStateFor), in the same update as the body. Tasks are left alone.
+ */
+export async function changeCandidateStatus(client, dataRepo, candidate, newStatusId, extraFields = {}, rules = null) {
   const fresh = await getIssue(client, dataRepo, candidate.issue.number);
   const { data, notes } = parseIssueBody(fresh.body);
   if (!data) {
@@ -268,7 +284,14 @@ export async function changeCandidateStatus(client, dataRepo, candidate, newStat
   const nextData = { ...data, ...extraFields, status: newStatusId };
   const body = stringifyIssueBody(nextData, notes, 'candidate');
 
-  await updateIssueBody(client, dataRepo, candidate.issue.number, body);
+  // Only send a state change when it actually changes (no-op updates of an
+  // already-closed issue would otherwise bump its "closed as" reason/time).
+  let stateChange = {};
+  if (rules) {
+    const target = issueStateFor(rules, newStatusId);
+    if (target.state !== fresh.state) stateChange = target.state === 'open' ? { state: 'open', state_reason: 'reopened' } : target;
+  }
+  await updateIssueBody(client, dataRepo, candidate.issue.number, body, stateChange);
   const newLabel = `status:${newStatusId}`;
   await addLabels(client, dataRepo, candidate.issue.number, [newLabel]);
 

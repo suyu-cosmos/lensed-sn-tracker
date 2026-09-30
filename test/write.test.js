@@ -13,14 +13,15 @@ import {
   deepMerge,
   updateCandidateFields,
   setTaskTrack,
+  issueStateFor,
 } from '../src/lib/write.js';
 import { parseIssueBody, stringifyIssueBody } from '../src/lib/yaml.js';
 
 /** A fake Octokit client whose issue has the given body data + label names. */
-function mockClient(data, labelNames) {
+function mockClient(data, labelNames, state = 'open') {
   const issues = {
     get: vi.fn(async () => ({
-      data: { body: stringifyIssueBody(data, '', 'candidate'), labels: labelNames.map((name) => ({ name })) },
+      data: { body: stringifyIssueBody(data, '', 'candidate'), labels: labelNames.map((name) => ({ name })), state },
     })),
     update: vi.fn(async () => ({})),
     addLabels: vi.fn(async () => ({})),
@@ -65,6 +66,44 @@ describe('changeCandidateStatus', () => {
     ]);
     await changeCandidateStatus(client, repo, candidate, 'lensed_sn');
     expect(issues.removeLabel).not.toHaveBeenCalled();
+  });
+  describe('closing/reopening the candidate issue with terminal statuses', () => {
+    const rules = {
+      statuses: [
+        { id: 'awaiting_confirmation' },
+        { id: 'lensed_sn' },
+        { id: 'data_complete', terminal: true },
+        { id: 'false_positive', terminal: true, close_as: 'not_planned' },
+      ],
+    };
+
+    it('issueStateFor: open for live statuses, closed (completed / not planned) for terminal ones', () => {
+      expect(issueStateFor(rules, 'lensed_sn')).toEqual({ state: 'open' });
+      expect(issueStateFor(rules, 'data_complete')).toEqual({ state: 'closed', state_reason: 'completed' });
+      expect(issueStateFor(rules, 'false_positive')).toEqual({ state: 'closed', state_reason: 'not_planned' });
+    });
+
+    it('closes the issue as not planned in the same update when it becomes a false positive', async () => {
+      const { client, issues } = mockClient({ id: 'X', status: 'awaiting_confirmation' }, ['status:awaiting_confirmation']);
+      await changeCandidateStatus(client, repo, candidate, 'false_positive', { false_positive_type: 'bogus' }, rules);
+      expect(issues.update).toHaveBeenCalledTimes(1);
+      expect(issues.update.mock.calls[0][0]).toMatchObject({ state: 'closed', state_reason: 'not_planned' });
+    });
+
+    it('reopens a closed issue when moving back to a live status', async () => {
+      const { client, issues } = mockClient({ id: 'X', status: 'false_positive' }, ['status:false_positive'], 'closed');
+      await changeCandidateStatus(client, repo, candidate, 'lensed_sn', {}, rules);
+      expect(issues.update.mock.calls[0][0]).toMatchObject({ state: 'open', state_reason: 'reopened' });
+    });
+
+    it('sends no state change when the issue is already in the right state, or without rules', async () => {
+      const a = mockClient({ id: 'X', status: 'awaiting_confirmation' }, []);
+      await changeCandidateStatus(a.client, repo, candidate, 'lensed_sn', {}, rules);
+      expect(a.issues.update.mock.calls[0][0]).not.toHaveProperty('state');
+      const b = mockClient({ id: 'X', status: 'lensed_sn' }, []);
+      await changeCandidateStatus(b.client, repo, candidate, 'data_complete');
+      expect(b.issues.update.mock.calls[0][0]).not.toHaveProperty('state');
+    });
   });
 });
 

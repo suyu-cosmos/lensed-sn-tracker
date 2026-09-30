@@ -132,9 +132,12 @@ export async function getIssue(client, { owner, name }, issueNumber) {
   return response.data;
 }
 
-/** Replace an issue's body (e.g. after mutating its parsed YAML block). */
-export async function updateIssueBody(client, { owner, name }, issueNumber, body) {
-  await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, body });
+/**
+ * Replace an issue's body (e.g. after mutating its parsed YAML block).
+ * `extra` can carry `state`/`state_reason` to open or close it in the same call.
+ */
+export async function updateIssueBody(client, { owner, name }, issueNumber, body, extra = {}) {
+  await client.rest.issues.update({ owner, repo: name, issue_number: issueNumber, body, ...extra });
 }
 
 /** Add one or more labels to an issue; any name that doesn't exist yet is created automatically. */
