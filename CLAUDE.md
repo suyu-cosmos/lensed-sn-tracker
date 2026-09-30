@@ -211,6 +211,13 @@ never from an immediate refetch. `wireFacilityCascade` takes an options object
 with an `allowed()` getter returning the selected track, and returns
 `{ refresh }` for the track selector to call.
 
+**Tasks render as compact lines, not tables** (`renderTaskLine`/`renderTaskLines`
+in candidate.js), everywhere on the candidate page: state dot (open / closed /
+overdue = requested date or deadline passed), instrument · facility `short:`
+(facilities.yaml), the key date + cadence, assignee initials, `#n↗`. The task
+type is shown only when it isn't the track's `task_type`. Per-image track cards
+group their tasks under each image, each with its own "+ Add".
+
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use
 these rather than re-deriving track state, so the §6.2 semantics (derived

@@ -28,6 +28,7 @@ import {
   rolesForStatus,
   newlyRelevantRoles,
   assignablePeople,
+  taskDueDate,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue, setIssueAssignees } from '../lib/github.js';
@@ -165,40 +166,106 @@ function collectRoleOverrides(form, base = {}) {
   return next;
 }
 
+// ---------- compact task lines (track cards and every task list) ----------
+
+const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+/** "SS" for "Sherry Suyu" — first letters of the first and last word of the name. */
+function initials(name) {
+  const words = String(name).replace(/\s+—.*$/, '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+/** What the task *is*, without the "[cand-id] type:" / "(image X)" boilerplate the title carries. */
+function taskWhat(t, facilities) {
+  const d = t.data ?? {};
+  if (d.facility || d.instrument) {
+    const facility = facilityById(facilities, d.facility);
+    const instrument = facility?.instruments?.find((i) => i.id === d.instrument);
+    const band = d.filter ? ` (${d.filter})` : '';
+    return `${instrument?.name ?? d.instrument ?? '?'}${band} · ${facility?.short ?? (d.facility ?? '?').toUpperCase()}`;
+  }
+  return t.issue.title.replace(/^\[[^\]]*\]\s*/, '').replace(/^(trigger|observation|analysis|decision):\s*/, '').replace(/\s*\(image [^)]*\)$/, '');
+}
+
+/** The one date that matters for this task, plus a recurring campaign's cadence. */
+function taskWhen(t) {
+  const d = t.data ?? {};
+  const parts = [];
+  if (d.cadence_days) parts.push(`every ${d.cadence_days} d${d.until ? ` until ${d.until}` : ''}`);
+  if (d.requested_date) parts.push(`req. ${d.requested_date}`);
+  else if (d.deadline) parts.push(`due ${d.deadline}`);
+  else if (d.obs_utc) parts.push(`obs. ${String(d.obs_utc).slice(0, 10)}`);
+  if (Array.isArray(d.epochs) && d.epochs.length) parts.push(`${d.epochs.length} epoch${d.epochs.length === 1 ? '' : 's'}`);
+  return parts.join(' · ');
+}
+
+/** open / closed / overdue (open, and its requested date or deadline has passed). */
+function taskLineState(t) {
+  if (t.issue.state !== 'open') return 'closed';
+  const due = taskDueDate(t);
+  return due && String(due).slice(0, 10) < todayUtc() ? 'overdue' : 'open';
+}
+const TASK_STATE_TITLE = { open: 'open', closed: 'closed', overdue: 'open — its requested date / deadline has passed' };
+
 /**
- * Task table. `opts.track` adds a Track column (rules needed for labels),
- * `opts.image` adds an Image column (per-image tracks).
+ * One task as a single compact line: state dot, what (instrument · facility),
+ * when, assignee initials, #number linking to GitHub. `opts.track` names the
+ * task's track (lists that mix tracks); the task type is shown only when it
+ * differs from its track's usual `task_type` (`opts.typeUnless` overrides that); `opts.moveTo` adds the
+ * "move to…" control (untracked tasks).
  */
-function renderTasks(tasks, opts = {}) {
-  if (!tasks.length) return '<p class="muted">No tasks yet.</p>';
-  // opts.moveTo: tracks a task can be refiled into (per-image tracks need a
-  // target image, so they're only offered for tasks that already name one).
-  const moveCell = (t) => {
-    const choices = (opts.moveTo ?? []).filter((tr) => tr.id !== t.data?.track && (!tr.per_image || t.data?.image));
-    if (!t.data || !choices.length) return '<td class="muted">—</td>';
-    return `<td class="move-cell"><select data-move-select="${t.issue.number}"><option value="">move to…</option>${optionEls(
-      choices.map((tr) => tr.id),
-      choices.map((tr) => tr.label ?? tr.id),
-    )}</select> <button type="button" class="linklike" data-move-task="${t.issue.number}">Move</button></td>`;
-  };
-  const trackLabel = (id) => (id ? opts.rules?.tracks?.find((t) => t.id === id)?.label ?? id : '—');
-  const rows = tasks
-    .map(
-      (t) => `
-      <tr>
-        <td><a href="${t.issue.html_url}" target="_blank" rel="noreferrer">${escapeHtml(t.issue.title)}</a></td>
-        <td>${escapeHtml(t.type)}</td>
-        ${opts.track ? `<td>${escapeHtml(trackLabel(t.data?.track))}</td>` : ''}
-        ${opts.image ? `<td>${escapeHtml(t.data?.image ?? '—')}</td>` : ''}
-        <td>${escapeHtml(t.issue.state)}</td>
-        <td>${escapeHtml((t.issue.assignees ?? []).map((a) => a.login).join(', ') || '—')}</td>
-        ${opts.moveTo ? moveCell(t) : ''}
-      </tr>`,
-    )
+function renderTaskLine(t, ctx, opts = {}) {
+  const state = taskLineState(t);
+  const when = taskWhen(t);
+  const trackLabel = opts.track && t.data?.track ? ctx.rules.tracks?.find((tr) => tr.id === t.data.track)?.label ?? t.data.track : '';
+  // Show the type only when it's not what the task's track normally holds (e.g. an observation in a trigger track).
+  const usualType = opts.typeUnless ?? ctx.rules.tracks?.find((tr) => tr.id === t.data?.track)?.task_type;
+  const typeTag = t.type !== usualType ? `<span class="task-type">${escapeHtml(t.type)}</span>` : '';
+  const people = (t.issue.assignees ?? [])
+    .map((a) => {
+      const name = findPerson(ctx.people, a.login)?.name ?? a.login;
+      return `<span class="avatar" title="${escapeHtml(`${name} (${a.login})`)}">${escapeHtml(initials(name))}</span>`;
+    })
     .join('');
-  return `<div class="table-scroll"><table><thead><tr><th>Task</th><th>Type</th>${opts.track ? '<th>Track</th>' : ''}${
-    opts.image ? '<th>Image</th>' : ''
-  }<th>State</th><th>Assignees</th>${opts.moveTo ? '<th>Move</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  let move = '';
+  if (opts.moveTo) {
+    const choices = opts.moveTo.filter((tr) => tr.id !== t.data?.track && (!tr.per_image || t.data?.image));
+    if (t.data && choices.length) {
+      move = `<span class="task-move"><select data-move-select="${t.issue.number}" aria-label="Move #${t.issue.number} to track"><option value="">move to…</option>${optionEls(
+        choices.map((tr) => tr.id),
+        choices.map((tr) => tr.label ?? tr.id),
+      )}</select> <button type="button" class="small-btn" data-move-task="${t.issue.number}">Move</button></span>`;
+    }
+  }
+
+  return `
+    <li class="task-line state-${state}">
+      <span class="task-dot" title="${TASK_STATE_TITLE[state]}"></span>
+      <span class="task-main">
+        <span class="task-what">${typeTag}${escapeHtml(taskWhat(t, ctx.facilities))}${t.data?.image && opts.image ? ` <span class="muted">· image ${escapeHtml(t.data.image)}</span>` : ''}</span>
+        ${when || trackLabel ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}</span>` : ''}
+      </span>
+      <span class="task-people">${people || '<span class="avatar empty" title="No assignee — assign someone on GitHub">?</span>'}</span>
+      <a class="task-num" href="${t.issue.html_url}" target="_blank" rel="noreferrer" title="${escapeHtml(t.issue.title)}">#${t.issue.number}↗</a>
+      ${move}
+    </li>`;
+}
+
+/** A list of task lines: open first, closed dimmed after them, and folded away once there are 3+ closed. */
+function renderTaskLines(tasks, ctx, opts = {}) {
+  if (!tasks.length) return opts.empty === '' ? '' : `<p class="muted">${opts.empty ?? 'No tasks yet.'}</p>`;
+  const byNewest = (a, b) => b.issue.number - a.issue.number;
+  const open = tasks.filter((t) => t.issue.state === 'open').sort(byNewest);
+  const closed = tasks.filter((t) => t.issue.state !== 'open').sort(byNewest);
+  const lines = (list) => list.map((t) => renderTaskLine(t, ctx, opts)).join('');
+  const closedHtml =
+    closed.length >= 3
+      ? `<li class="task-folded"><details><summary>${closed.length} closed</summary><ul class="task-lines">${lines(closed)}</ul></details></li>`
+      : lines(closed);
+  return `<ul class="task-lines">${lines(open)}${closedHtml}</ul>`;
 }
 
 // ---------- image timeline (plan §5.1 image_dates) ----------
@@ -276,28 +343,51 @@ const UNTRACKED = '__untracked';
 
 const TRACK_STATE_LABEL = { waiting: 'waiting for event', not_started: 'not started', active: 'active', done: 'done' };
 
-function renderTrackCard(track, data, tasks, people) {
+function renderTrackCard(ctx, track, data, tasks) {
+  const { people } = ctx;
   const state = trackState(track, tasks, data);
   const trackTasks = tasksForTrack(track, tasks);
   const owner = track.role ? resolveRole(data, track.role, people) : null;
   const ownerName = owner?.personId ? findPerson(people, owner.personId)?.name ?? owner.personId : 'unassigned';
-  const cadence = track.default_cadence_days ? ` · default cadence ${escapeHtml(String(track.default_cadence_days))} d` : '';
+  const lineOpts = { typeUnless: track.task_type };
+  const addBtn = (label, image) =>
+    `<button type="button" class="small-btn" data-add-task data-track="${escapeHtml(track.id)}"${image ? ` data-image="${escapeHtml(image)}"` : ''}>${escapeHtml(label)}</button>`;
+
+  const meta = [
+    `<span title="${escapeHtml(track.role ?? '')}">Owner: ${escapeHtml(ownerName)}</span>`,
+    track.default_cadence_days ? `default every ${escapeHtml(String(track.default_cadence_days))} d` : '',
+    track.optional ? '<span title="Not every candidate needs this track">optional</span>' : '',
+  ].filter(Boolean);
   const purposes = (track.purposes ?? []).map((p) => `<li>${escapeHtml(p)}</li>`).join('');
 
-  let imagesHtml = '';
+  let body;
   if (track.per_image) {
+    // One group per detected trailing image, each with its own tasks and "+ Add";
+    // a task naming an image that isn't (or is no longer) eligible still shows, under its image.
     const eligible = eligibleImages(track, data, tasks);
-    imagesHtml = eligible.length
-      ? `<ul class="image-slots">${eligible
+    const groups = new Map(eligible.map((e) => [e.image, { detected: e.detected, tasks: [] }]));
+    for (const t of trackTasks) {
+      const key = t.data?.image ?? '';
+      if (!groups.has(key)) groups.set(key, { detected: null, tasks: [] });
+      groups.get(key).tasks.push(t);
+    }
+    body = groups.size
+      ? [...groups.entries()]
           .map(
-            (e) => `<li>Image <strong>${escapeHtml(e.image)}</strong> <span class="muted">(detected ${escapeHtml(e.detected)})</span>: ${
-              e.targeted
-                ? `<span class="track-state state-done">targeted</span> <span class="muted">(${e.taskCount} task${e.taskCount === 1 ? '' : 's'})</span>`
-                : '<span class="muted">not targeted</span>'
-            } <button type="button" class="linklike" data-add-task data-track="${escapeHtml(track.id)}" data-image="${escapeHtml(e.image)}">+ Add ${e.targeted ? 'another ' : ''}for image ${escapeHtml(e.image)}</button></li>`,
+            ([image, g]) => `
+        <div class="image-group">
+          <div class="image-group-head">
+            <strong>${image ? `Image ${escapeHtml(image)}` : 'No image set'}</strong>
+            <span class="muted">${g.detected ? `detected ${escapeHtml(g.detected)}` : ''}${g.tasks.length ? '' : `${g.detected ? ' · ' : ''}not targeted`}</span>
+          </div>
+          ${renderTaskLines(g.tasks, ctx, { ...lineOpts, empty: '' })}
+          ${image && g.detected ? addBtn(g.tasks.length ? '+ Add another' : '+ Add task', image) : ''}
+        </div>`,
           )
-          .join('')}</ul>`
+          .join('')
       : '<p class="muted">Waiting for a trailing image to be detected — record its date in the Image timeline above.</p>';
+  } else {
+    body = `${renderTaskLines(trackTasks, ctx, lineOpts)}<div>${addBtn('+ Add task')}</div>`;
   }
 
   return `
@@ -306,12 +396,10 @@ function renderTrackCard(track, data, tasks, people) {
         <h3>${escapeHtml(track.label ?? track.id)}</h3>
         <span class="track-state state-${state}">${TRACK_STATE_LABEL[state]}</span>
       </div>
-      ${track.optional ? '<p class="muted">Optional — not every candidate needs this track.</p>' : ''}
-      <p class="muted">Owner: ${escapeHtml(ownerName)}${track.role ? ` (${escapeHtml(track.role)})` : ''}${cadence}</p>
-      ${purposes ? `<ul class="purposes">${purposes}</ul>` : ''}
-      ${imagesHtml}
-      ${trackTasks.length ? renderTasks(trackTasks, { image: track.per_image }) : '<p class="muted">No tasks yet.</p>'}
-      ${track.per_image ? '' : `<button type="button" class="linklike" data-add-task data-track="${escapeHtml(track.id)}">+ Add task to this track</button>`}
+      <div class="track-meta">${meta.join('<span class="sep">·</span>')}${
+        purposes ? `<details class="purpose"><summary>ⓘ Purpose</summary><ul class="purposes">${purposes}</ul></details>` : ''
+      }</div>
+      ${body}
     </div>`;
 }
 
@@ -323,22 +411,22 @@ function renderTrackCard(track, data, tasks, people) {
  */
 function renderTrackSection(ctx, data, tasks) {
   const tracks = tracksForStatus(ctx.rules, data.status);
-  if (!tracks.length) return `<h2>Tasks</h2>${renderTasks(tasks, { track: true, rules: ctx.rules })}`;
+  if (!tracks.length) return `<h2>Tasks</h2><div class="card">${renderTaskLines(tasks, ctx, { track: true })}</div>`;
   const inPhase = new Set(tracks.map((t) => t.id));
   const knownTrack = new Set((ctx.rules.tracks ?? []).map((t) => t.id));
   const earlier = tasks.filter((t) => t.data?.track && !inPhase.has(t.data.track) && knownTrack.has(t.data.track));
   const other = tasks.filter((t) => !inPhase.has(t.data?.track) && !earlier.includes(t));
   return `
     <h2>Follow-up tracks</h2>
-    <div class="track-grid">${tracks.map((track) => renderTrackCard(track, data, tasks, ctx.people)).join('')}</div>
+    <div class="track-grid">${tracks.map((track) => renderTrackCard(ctx, track, data, tasks)).join('')}</div>
     ${
       earlier.length
-        ? `<details class="card"><summary><h3>Tasks from other phases (${earlier.length})</h3></summary><p class="muted">Filed under tracks that belong to another phase (e.g. confirmation triggers).</p>${renderTasks(earlier, { track: true, rules: ctx.rules })}</details>`
+        ? `<details class="card"><summary><h3>Tasks from other phases (${earlier.length})</h3></summary><p class="muted">Filed under tracks that belong to another phase (e.g. confirmation triggers).</p>${renderTaskLines(earlier, ctx, { track: true })}</details>`
         : ''
     }
     ${
       other.length
-        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or with an unknown track. Use "move to…" to file a task under one of this phase's tracks.</p>${renderTasks(other, { track: true, rules: ctx.rules, moveTo: tracks })}<span id="move-task-error" class="error"></span></div>`
+        ? `<div class="card"><h3>Other tasks</h3><p class="muted">Untracked, or with an unknown track. Use "move to…" to file a task under one of this phase's tracks.</p>${renderTaskLines(other, ctx, { moveTo: tracks })}<span id="move-task-error" class="error"></span></div>`
         : ''
     }`;
 }
@@ -1078,7 +1166,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
 
     ${data ? renderImageTimeline(data) : ''}
 
-    ${data ? renderTrackSection(ctx, data, tasks) : `<h2>Tasks</h2>${renderTasks(tasks)}`}
+    ${data ? renderTrackSection(ctx, data, tasks) : `<h2>Tasks</h2><div class="card">${renderTaskLines(tasks, ctx)}</div>`}
     ${data ? renderAddTask(facilities, tracksForStatus(rules, data.status)) : ''}
 
     <h2>Observation log</h2>

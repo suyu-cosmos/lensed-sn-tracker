@@ -178,7 +178,7 @@ button.linklike {
 
 .track-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
 }
@@ -186,8 +186,61 @@ button.linklike {
 .track-card h3 { margin: 0; font-size: 1rem; }
 .track-card p { margin: 0; }
 .track-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
-.purposes { margin: 0; padding-left: 1.1rem; font-size: 0.85rem; color: var(--muted); }
-.image-slots { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.purposes { margin: 0.3rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; color: var(--muted); }
+
+.track-meta { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0.4rem; }
+.track-meta .sep { color: var(--border); }
+details.purpose { flex-basis: 100%; }
+details.purpose summary { cursor: pointer; width: fit-content; }
+.track-meta > span + details.purpose { margin-top: 0.1rem; }
+
+.image-group { border-top: 1px solid var(--border); padding-top: 0.45rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.image-group-head { display: flex; gap: 0.5rem; align-items: baseline; font-size: 0.9rem; }
+
+/* Compact one-line tasks (track cards and every task list on the candidate page). */
+ul.task-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+.task-line {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.3rem 0.45rem; border-radius: 6px; font-size: 0.9rem;
+}
+.task-line:hover { background: var(--bg); }
+.task-line.state-closed { opacity: 0.55; }
+.task-dot { flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--green); }
+.task-line.state-closed .task-dot { background: var(--gray); }
+.task-line.state-overdue .task-dot { background: var(--amber); }
+.task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.task-what { overflow-wrap: anywhere; }
+.task-when { font-size: 0.8rem; color: var(--muted); }
+.task-line.state-overdue .task-when { color: var(--amber); }
+.task-type {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 4px; padding: 0 0.25rem; margin-right: 0.35rem;
+}
+.task-people { flex: none; display: flex; gap: 0.2rem; }
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--bg); border: 1px solid var(--border);
+  font-size: 0.65rem; font-weight: 700; color: var(--text); cursor: default;
+}
+.avatar.empty { border-style: dashed; border-color: var(--amber); color: var(--amber); background: var(--panel); }
+.track-card p.muted { font-size: 0.9rem; }
+.task-num { flex: none; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
+.task-num:hover { text-decoration: underline; }
+.task-move { flex: none; white-space: nowrap; }
+.task-move select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.8rem; margin: 0; }
+.task-folded { font-size: 0.85rem; color: var(--muted); padding: 0.2rem 0.45rem; }
+.task-folded summary { cursor: pointer; }
+
+button.small-btn {
+  background: var(--panel); color: var(--link);
+  border: 1px solid var(--link); border-radius: 6px;
+  padding: 0.2rem 0.6rem; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+button.small-btn:hover { background: var(--link); color: #fff; }
+button.small-btn:disabled { opacity: 0.6; cursor: default; }
+.track-card > div > button.small-btn, .image-group > button.small-btn { align-self: flex-start; }
+.image-group > button.small-btn { margin-left: 0.45rem; }
 
 .track-state {
   display: inline-block;
@@ -215,8 +268,6 @@ table.compact input[name="newImage"] { width: 4.5rem; }
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
 }
-.move-cell { white-space: nowrap; }
-.move-cell select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.85rem; }
 
 /* ---- Milestone 2.5 Step 5: dashboard ---- */
 .dashboard-controls { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
