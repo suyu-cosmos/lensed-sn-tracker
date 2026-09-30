@@ -153,6 +153,12 @@ export async function removeLabel(client, { owner, name }, issueNumber, label) {
   });
 }
 
+/** Post a comment on an issue; returns the created comment. */
+export async function createComment(client, { owner, name }, issueNumber, body) {
+  const response = await client.rest.issues.createComment({ owner, repo: name, issue_number: issueNumber, body });
+  return response.data;
+}
+
 /** List threaded comments on any issue (parent or sub-issue). */
 export async function listComments(client, { owner, name }, issueNumber) {
   return client.paginate(client.rest.issues.listComments, {

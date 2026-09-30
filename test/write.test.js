@@ -26,6 +26,7 @@ function mockClient(data, labelNames, state = 'open') {
     update: vi.fn(async () => ({})),
     addLabels: vi.fn(async () => ({})),
     removeLabel: vi.fn(async () => ({})),
+    createComment: vi.fn(async () => ({ data: {} })),
   };
   return { client: { rest: { issues } }, issues };
 }
@@ -73,7 +74,7 @@ describe('changeCandidateStatus', () => {
         { id: 'awaiting_confirmation' },
         { id: 'lensed_sn' },
         { id: 'data_complete', terminal: true },
-        { id: 'false_positive', terminal: true, close_as: 'not_planned' },
+        { id: 'false_positive', terminal: true, close_as: 'not_planned', close_comment: 'No further follow-up obs since false-positive.' },
       ],
     };
 
@@ -88,12 +89,14 @@ describe('changeCandidateStatus', () => {
       await changeCandidateStatus(client, repo, candidate, 'false_positive', { false_positive_type: 'bogus' }, rules);
       expect(issues.update).toHaveBeenCalledTimes(1);
       expect(issues.update.mock.calls[0][0]).toMatchObject({ state: 'closed', state_reason: 'not_planned' });
+      expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({ body: 'No further follow-up obs since false-positive.' }));
     });
 
     it('reopens a closed issue when moving back to a live status', async () => {
       const { client, issues } = mockClient({ id: 'X', status: 'false_positive' }, ['status:false_positive'], 'closed');
       await changeCandidateStatus(client, repo, candidate, 'lensed_sn', {}, rules);
       expect(issues.update.mock.calls[0][0]).toMatchObject({ state: 'open', state_reason: 'reopened' });
+      expect(issues.createComment).not.toHaveBeenCalled();
     });
 
     it('sends no state change when the issue is already in the right state, or without rules', async () => {

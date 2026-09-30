@@ -689,7 +689,8 @@ function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
     // Moving into / out of a finished status also closes / reopens the issue.
     let closeNote = '';
     if (select.value && isTerminal(rules, select.value) && !isTerminal(rules, candidate.data.status)) {
-      closeNote = `<p class="muted">This also closes the candidate issue on GitHub (as "${issueStateFor(rules, select.value).state_reason === 'not_planned' ? 'not planned' : 'completed'}"); its tasks are left as they are.</p>${openTasksWarning(knownTasks, 'Note:')}`;
+      const why = getStatus(rules, select.value)?.close_comment;
+      closeNote = `<p class="muted">This also closes the candidate issue on GitHub${why ? ` — "${escapeHtml(why)}"` : ''}; its tasks are left as they are.</p>${openTasksWarning(knownTasks, 'Note:')}`;
     } else if (select.value && !isTerminal(rules, select.value) && isTerminal(rules, candidate.data.status)) {
       closeNote = '<p class="muted">This also reopens the candidate issue on GitHub.</p>';
     }

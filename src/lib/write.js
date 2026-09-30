@@ -5,7 +5,7 @@
 // candidate.js's add-task form) can't drift out of sync with each other or
 // with the issue templates in lensed-sn-data.
 
-import { getIssue, updateIssueBody, addLabels, removeLabel, labelName } from './github.js';
+import { getIssue, updateIssueBody, addLabels, removeLabel, labelName, createComment } from './github.js';
 import { parseIssueBody, stringifyIssueBody } from './yaml.js';
 import { formatUtc } from './format.js';
 import { resolveRole, findPerson, getStatus } from './rules.js';
@@ -271,7 +271,10 @@ export function issueStateFor(rules, statusId) {
 
 /**
  * Pass `rules` to also open/close the candidate issue to match the new status
- * (issueStateFor), in the same update as the body. Tasks are left alone.
+ * (issueStateFor), in the same update as the body. When it closes, the
+ * status's `close_comment:` (rules.yaml) is posted as a comment — GitHub's
+ * close reasons are a fixed set, so that's where the group's own wording goes.
+ * Tasks are left alone.
  */
 export async function changeCandidateStatus(client, dataRepo, candidate, newStatusId, extraFields = {}, rules = null) {
   const fresh = await getIssue(client, dataRepo, candidate.issue.number);
@@ -292,6 +295,8 @@ export async function changeCandidateStatus(client, dataRepo, candidate, newStat
     if (target.state !== fresh.state) stateChange = target.state === 'open' ? { state: 'open', state_reason: 'reopened' } : target;
   }
   await updateIssueBody(client, dataRepo, candidate.issue.number, body, stateChange);
+  const closeComment = stateChange.state === 'closed' ? getStatus(rules, newStatusId)?.close_comment : null;
+  if (closeComment) await createComment(client, dataRepo, candidate.issue.number, closeComment);
   const newLabel = `status:${newStatusId}`;
   await addLabels(client, dataRepo, candidate.issue.number, [newLabel]);
 

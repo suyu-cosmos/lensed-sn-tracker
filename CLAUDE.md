@@ -262,7 +262,8 @@ Things worth knowing before touching this:
 - **Finished statuses close the candidate issue.** With `rules` passed,
   `changeCandidateStatus` sets the issue state in the same update as the body
   (`issueStateFor`): a `terminal` status closes it — as "not planned" when the
-  status has `close_as: not_planned` (false_positive), else "completed" — and
+  status has `close_as: not_planned` (false_positive), else "completed"; its
+  `close_comment:` is posted as a comment, since GitHub's reasons are fixed — and
   moving back to a live status reopens it. Tasks are never auto-closed; the
   page warns about open ones instead. Candidates are listed with `state: all`,
   so closed ones still load (dashboard "finished" comes from the status).
