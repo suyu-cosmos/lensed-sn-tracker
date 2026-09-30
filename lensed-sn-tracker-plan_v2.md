@@ -219,7 +219,6 @@ statuses:
     next_steps:
       - "Confirm lensing nature through classification spectroscopy (SN redshift, lens redshift, SN type) and/or photometric data (e.g. AO image showing multiple SN images)"
       - "Confirm the main lead (group default, or pick someone on the Roles card)"
-      - "Request high-resolution imaging (if not yet available through Euclid)"
     transitions:
       awaiting_confirmation: "Confirmation spectroscopy/imaging requested"
   - id: awaiting_confirmation        # renamed from awaiting_classification_spectrum (done)
