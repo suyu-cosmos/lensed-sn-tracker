@@ -1,9 +1,10 @@
 // Year-first date fields. A native <input type="date"> always *displays* in
 // the viewer's locale (dd/mm/yyyy, mm/dd/yyyy, …), which a page can't
 // change — so every date field is a plain text box in yyyy-mm-dd (the same
-// ISO form the data is stored and shown in), plus a 📅 button that opens the
-// browser's own calendar via a hidden native date input. The form value is
-// the text box's, so nothing downstream changes.
+// ISO form the data is stored and shown in), plus a 📅 button that opens a
+// small calendar of our own (plain buttons, so it works the same in every
+// browser — an invisible native picker behind the icon did not). The form
+// value is the text box's, so nothing downstream changes.
 
 import { escapeHtml } from './format.js';
 
@@ -17,7 +18,7 @@ export function dateInputHtml(name, value = '', attrs = {}) {
   const label = attrs.ariaLabel ? ` aria-label="${escapeHtml(attrs.ariaLabel)}"` : '';
   return `<span class="date-field${attrs.className ? ` ${escapeHtml(attrs.className)}` : ''}"><input type="text" class="date-text" name="${escapeHtml(name)}" value="${escapeHtml(value ?? '')}" placeholder="yyyy-mm-dd" pattern="${DATE_PATTERN}" title="Date as yyyy-mm-dd, e.g. 2026-10-05" inputmode="numeric" maxlength="10" autocomplete="off"${label}${
     attrs.required ? ' required' : ''
-  } /><span class="date-pick" title="Pick a date">📅<input type="date" class="date-native" tabindex="-1" aria-hidden="true" /></span></span>`;
+  } /><button type="button" class="date-pick" title="Pick a date" aria-label="Pick a date">📅</button></span>`;
 }
 
 /**
@@ -36,32 +37,108 @@ export function utcDateTimeValue(raw) {
   return m ? `${m[1]}T${m[2]}:00Z` : text;
 }
 
+// ---------- the calendar popup ----------
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const pad = (n) => String(n).padStart(2, '0');
+const iso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`; // m is 0-based
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** HTML for one month (Monday-first), with `selected`/today marked. */
+export function calendarHtml(year, month, selected) {
+  const first = new Date(Date.UTC(year, month, 1));
+  const lead = (first.getUTCDay() + 6) % 7; // Monday = 0
+  const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const today = todayIso();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span></span>');
+  for (let d = 1; d <= days; d++) {
+    const value = iso(year, month, d);
+    const cls = [value === selected ? 'selected' : '', value === today ? 'today' : ''].filter(Boolean).join(' ');
+    cells.push(`<button type="button" data-day="${value}"${cls ? ` class="${cls}"` : ''}>${d}</button>`);
+  }
+  return `
+    <div class="cal-head">
+      <button type="button" data-step="-1" aria-label="Previous month">‹</button>
+      <span>${MONTHS[month]} ${year}</span>
+      <button type="button" data-step="1" aria-label="Next month">›</button>
+    </div>
+    <div class="cal-grid">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => `<span class="cal-dow">${d}</span>`).join('')}${cells.join('')}</div>
+    <div class="cal-foot"><button type="button" data-day="${today}">Today</button><button type="button" data-clear>Clear</button></div>`;
+}
+
+let open = null; // { popup, text, year, month }
+
+function closeCalendar() {
+  open?.popup.remove();
+  open = null;
+}
+
+function setValue(text, value) {
+  text.value = value;
+  text.dispatchEvent(new Event('input', { bubbles: true }));
+  text.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function openCalendar(button) {
+  const text = button.closest('.date-field')?.querySelector('.date-text');
+  if (!text) return;
+  closeCalendar();
+  const current = /^\d{4}-\d{2}-\d{2}$/.test(text.value) ? text.value : todayIso();
+  const popup = document.createElement('div');
+  popup.className = 'cal-popup';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-label', 'Choose a date');
+  document.body.appendChild(popup);
+  open = { popup, text, year: Number(current.slice(0, 4)), month: Number(current.slice(5, 7)) - 1 };
+  const draw = () => (popup.innerHTML = calendarHtml(open.year, open.month, text.value));
+  draw();
+
+  // Fixed position under the button (tables scroll sideways, which would clip an absolute popup).
+  const r = button.getBoundingClientRect();
+  const width = popup.offsetWidth || 240;
+  popup.style.left = `${Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))}px`;
+  popup.style.top = `${r.bottom + 4}px`;
+
+  popup.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const target = event.target.closest('button');
+    if (!target) return;
+    if (target.dataset.step) {
+      open.month += Number(target.dataset.step);
+      if (open.month < 0) (open.month = 11), open.year--;
+      if (open.month > 11) (open.month = 0), open.year++;
+      draw();
+    } else if (target.dataset.day) {
+      setValue(text, target.dataset.day);
+      closeCalendar();
+      text.focus();
+    } else if ('clear' in target.dataset) {
+      setValue(text, '');
+      closeCalendar();
+      text.focus();
+    }
+  });
+}
+
 /**
- * Wire every date field under `root`, once, by event delegation: the hidden
- * native input sits over the 📅 icon so a real click reaches it (Safari/
- * Firefox open their calendar on click); `showPicker()` covers Chrome. A
- * picked date is written into the text box and announced with an `input`
- * event, so live previews and "form is dirty" tracking see it like typing.
+ * Wire every date field's 📅 under `root`, once, by event delegation.
+ * Clicking outside, Escape, scrolling or resizing closes the calendar.
  */
 export function installDatePickers(root = document) {
   root.addEventListener('click', (event) => {
-    const native = event.target.closest?.('.date-native');
-    if (!native) return;
-    const text = native.closest('.date-field')?.querySelector('.date-text');
-    if (text && /^\d{4}-\d{2}-\d{2}$/.test(text.value)) native.value = text.value;
-    try {
-      native.showPicker?.();
-    } catch {
-      /* not supported / not allowed — the native click still opens it where it can */
+    const button = event.target.closest?.('.date-pick');
+    if (button) {
+      event.preventDefault(); // inside a <label>, don't also focus the text box
+      if (open && open.text === button.closest('.date-field')?.querySelector('.date-text')) closeCalendar();
+      else openCalendar(button);
+      return;
     }
+    if (open && !open.popup.contains(event.target)) closeCalendar();
   });
-  root.addEventListener('change', (event) => {
-    const native = event.target.closest?.('.date-native');
-    if (!native) return;
-    const text = native.closest('.date-field')?.querySelector('.date-text');
-    if (!text || !native.value) return;
-    text.value = native.value; // always yyyy-mm-dd, whatever the display locale
-    text.dispatchEvent(new Event('input', { bubbles: true }));
-    text.dispatchEvent(new Event('change', { bubbles: true }));
+  root.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeCalendar();
   });
+  window.addEventListener('resize', closeCalendar);
+  window.addEventListener('scroll', closeCalendar, true);
 }

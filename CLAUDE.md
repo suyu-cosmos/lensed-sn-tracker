@@ -180,7 +180,10 @@ element type that might also carry `hidden` without checking this first.
 `<input type="date">`: it displays in the viewer's locale (dd/mm vs mm/dd),
 which a page can't override. Use `dateInputHtml(name, value)` from
 `src/lib/dateinput.js` — a yyyy-mm-dd text box plus a 📅 that opens the
-native calendar (wired once app-wide by `installDatePickers` in main.js) —
+app's own Monday-first calendar popup (plain buttons, `position: fixed` so
+scrolling tables don't clip it; wired once app-wide by `installDatePickers` in
+main.js — an invisible native picker overlaid on the icon was tried first and
+didn't open reliably) —
 and `utcDateTimeInputHtml`/`utcDateTimeValue` for a UTC date+time. Also,
 `th` is `text-transform: uppercase`, which turns σ into Σ: wrap such
 characters in `<span class="nocase">`. Tests that need a DOM use
