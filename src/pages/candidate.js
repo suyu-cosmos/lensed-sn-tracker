@@ -406,6 +406,32 @@ function renderTrackCard(ctx, track, data, tasks) {
 }
 
 /**
+ * Tasks filed under tracks of other phases, grouped by track with that track's
+ * derived state (done / active …). Starts expanded while any of them is still
+ * open, since earlier-phase work is normally finished before moving on.
+ */
+function renderOtherPhasesCard(ctx, data, tasks, earlier, title = 'Tasks from other phases') {
+  const openCount = earlier.filter((t) => t.issue.state === 'open').length;
+  const trackIds = [...new Set(earlier.map((t) => t.data.track))];
+  const groups = (ctx.rules.tracks ?? [])
+    .filter((track) => trackIds.includes(track.id))
+    .map((track) => {
+      const state = trackState(track, tasks, data);
+      return `
+        <div class="image-group">
+          <div class="image-group-head">
+            <strong>${escapeHtml(track.label ?? track.id)}</strong>
+            <span class="track-state state-${state}">${TRACK_STATE_LABEL[state]}</span>
+          </div>
+          ${renderTaskLines(tasksForTrack(track, earlier), ctx, { typeUnless: track.task_type })}
+        </div>`;
+    })
+    .join('');
+  const summary = `${escapeHtml(title)} (${earlier.length}${openCount ? ` · <span class="open-count">${openCount} still open</span>` : ' · all done'})`;
+  return `<details class="card other-phases"${openCount ? ' open' : ''}><summary><h3>${summary}</h3></summary>${title === 'Tasks from other phases' ? '<p class="muted">Filed under tracks that belong to another phase (e.g. confirmation triggers).</p>' : ''}${groups}</details>`;
+}
+
+/**
  * Track cards for the current phase, then tasks from other phases' tracks
  * (e.g. confirmation triggers once live — filed correctly, just not current),
  * then "Other tasks" (untracked / unknown track, with a "move to…" control).
@@ -413,7 +439,15 @@ function renderTrackCard(ctx, track, data, tasks) {
  */
 function renderTrackSection(ctx, data, tasks) {
   const tracks = tracksForStatus(ctx.rules, data.status);
-  if (!tracks.length) return `<h2>Tasks</h2><div class="card">${renderTaskLines(tasks, ctx, { track: true })}</div>`;
+  if (!tracks.length) {
+    // Phases without tracks (data_complete, false_positive): every tracked task by its track and state, then the rest.
+    const knownTrack = new Set((ctx.rules.tracks ?? []).map((t) => t.id));
+    const tracked = tasks.filter((t) => knownTrack.has(t.data?.track));
+    const rest = tasks.filter((t) => !tracked.includes(t));
+    return `<h2>Tasks</h2>${tracked.length ? renderOtherPhasesCard(ctx, data, tasks, tracked, 'Tasks by track') : ''}${
+      rest.length || !tracked.length ? `<div class="card">${tracked.length ? '<h3>Other tasks</h3>' : ''}${renderTaskLines(rest, ctx)}</div>` : ''
+    }`;
+  }
   const inPhase = new Set(tracks.map((t) => t.id));
   const knownTrack = new Set((ctx.rules.tracks ?? []).map((t) => t.id));
   const earlier = tasks.filter((t) => t.data?.track && !inPhase.has(t.data.track) && knownTrack.has(t.data.track));
@@ -423,7 +457,7 @@ function renderTrackSection(ctx, data, tasks) {
     <div class="track-grid">${tracks.map((track) => renderTrackCard(ctx, track, data, tasks)).join('')}</div>
     ${
       earlier.length
-        ? `<details class="card"><summary><h3>Tasks from other phases (${earlier.length})</h3></summary><p class="muted">Filed under tracks that belong to another phase (e.g. confirmation triggers).</p>${renderTaskLines(earlier, ctx, { track: true })}</details>`
+        ? renderOtherPhasesCard(ctx, data, tasks, earlier)
         : ''
     }
     ${
@@ -686,6 +720,12 @@ function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
           .map((roleId) => `<label>${escapeHtml(roleId)} ${roleSelect(`roleov:${roleId}`, roleId, ctx.people, overrides[roleId])}</label>`)
           .join('')}</fieldset>`
       : '';
+    // Moving on while this phase's tracks still have open tasks: warn (never block).
+    let leaveNote = '';
+    if (select.value && !isTerminal(rules, select.value) && !isBackwardTransition(rules, candidate.data.status, select.value)) {
+      const phaseTrackIds = new Set(tracksForStatus(rules, candidate.data.status).map((t) => t.id));
+      leaveNote = openTasksWarning(knownTasks.filter((t) => phaseTrackIds.has(t.data?.track)), 'Note: in the current phase,');
+    }
     // Moving into / out of a finished status also closes / reopens the issue.
     let closeNote = '';
     if (select.value && isTerminal(rules, select.value) && !isTerminal(rules, candidate.data.status)) {
@@ -694,7 +734,7 @@ function wireChangeStatusForm(container, ctx, candidate, rules, knownTasks) {
     } else if (select.value && !isTerminal(rules, select.value) && isTerminal(rules, candidate.data.status)) {
       closeNote = '<p class="muted">This also reopens the candidate issue on GitHub.</p>';
     }
-    extra.innerHTML = requiredHtml + rolesHtml + closeNote;
+    extra.innerHTML = requiredHtml + rolesHtml + leaveNote + closeNote;
   });
 
   form.addEventListener('submit', async (e) => {

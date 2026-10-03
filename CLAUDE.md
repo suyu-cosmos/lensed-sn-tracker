@@ -216,7 +216,12 @@ in candidate.js), everywhere on the candidate page: state dot (open / closed /
 overdue = requested date or deadline passed), instrument · facility `short:`
 (facilities.yaml), the key date + cadence, assignee initials, `#n↗`. The task
 type is shown only when it isn't the track's `task_type`. Per-image track cards
-group their tasks under each image, each with its own "+ Add".
+group their tasks under each image, each with its own "+ Add". Tasks of tracks outside the
+current phase (and, in trackless phases like data_complete, all tracked tasks)
+are grouped per track with its derived state (`renderOtherPhasesCard`),
+expanded while any is open. Change-status warns — never blocks — when moving
+forward with open tasks in the current phase's tracks, or into a terminal
+status with any open task.
 
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use

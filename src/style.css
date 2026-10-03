@@ -223,6 +223,8 @@ ul.task-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-dir
   background: var(--bg); border: 1px solid var(--border);
   font-size: 0.65rem; font-weight: 700; color: var(--text); cursor: default;
 }
+.other-phases .open-count { color: var(--amber); }
+.other-phases .image-group:first-of-type { margin-top: 0.3rem; }
 .avatar.empty { border-style: dashed; border-color: var(--amber); color: var(--amber); background: var(--panel); }
 .track-card p.muted { font-size: 0.9rem; }
 .task-num { flex: none; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
