@@ -262,8 +262,8 @@ table.compact td, table.compact th { padding: 0.3rem 0.4rem; }
 table.compact input { display: inline-block; width: auto; max-width: 9.5rem; margin: 0; padding: 0.25rem 0.35rem; }
 table.compact input[name="newImage"] { width: 4.5rem; }
 table.compact input.err-input { width: 3.5rem; }
-.predicted-cell { white-space: nowrap; }
-.delay-note { font-size: 0.8rem; margin-left: 0.3rem; }
+.delay-cell { white-space: nowrap; }
+table.compact input.delay-input { width: 4.5rem; }
 p.small { font-size: 0.85rem; margin: 0.4rem 0 0; }
 
 .hint {

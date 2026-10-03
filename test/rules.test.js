@@ -18,7 +18,6 @@ import {
   predictedArrivals,
   arrivalAnchor,
   dateFromDelay,
-  delayFromDate,
 } from '../src/lib/rules.js';
 
 const rules = {
@@ -154,10 +153,10 @@ describe('predicted-arrival date helpers (Image timeline form)', () => {
     expect(arrivalAnchor({})).toBeNull();
   });
 
-  it('date ↔ delay round-trips in whole days, including negative delays', () => {
+  it('dateFromDelay adds the delay (negative and fractional too), null when either is missing', () => {
     expect(dateFromDelay('2026-09-01', 14)).toBe('2026-09-15');
-    expect(delayFromDate('2026-09-01', '2026-09-15')).toBe(14);
-    expect(delayFromDate('2026-09-01', '2026-08-29')).toBe(-3);
+    expect(dateFromDelay('2026-09-01', -3)).toBe('2026-08-29');
+    expect(dateFromDelay('2026-09-01', '9.5')).toBe('2026-09-10');
     expect(dateFromDelay('2026-09-01', null)).toBeNull();
     expect(dateFromDelay(null, 3)).toBeNull();
   });

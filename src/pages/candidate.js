@@ -32,7 +32,6 @@ import {
   isTerminal,
   arrivalAnchor,
   dateFromDelay,
-  delayFromDate,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue, setIssueAssignees } from '../lib/github.js';
@@ -295,39 +294,39 @@ function allImagesFaded(data) {
 }
 
 const DECIMAL_PATTERN = '[0-9]+\\.?[0-9]*|\\.[0-9]+';
+const SIGNED_DECIMAL_PATTERN = '[-+]?([0-9]+\\.?[0-9]*|\\.[0-9]+)';
 
 function renderImageTimeline(data) {
   const ref = referenceImage(data);
   const anchor = arrivalAnchor(data);
   const td = data?.time_delays ?? {};
   const arrivals = predictedArrivals(data);
-  const fmtArrival = (a) => `${a.date}${a.errDays != null ? ` ± ${a.errDays} d` : ''}`;
   const dateInput = (image, field) =>
     `<input type="date" name="${field}:${escapeHtml(image)}" value="${escapeHtml(data?.image_dates?.[image]?.[field] ?? '')}" />`;
-  // Predicted arrival is edited as a date but stored as a delay from the anchor
-  // (time_delays.predicted), so it follows the reference image if that changes.
-  const predictedInputs = (image, delay, err) => `
-    <span class="predicted-cell">
-      <input type="date" name="predicted:${escapeHtml(image)}" value="${escapeHtml(dateFromDelay(anchor, delay) ?? '')}" aria-label="Predicted arrival of image ${escapeHtml(image)}" />
-      ± <input class="err-input" type="text" inputmode="decimal" pattern="${DECIMAL_PATTERN}" title="1σ uncertainty in days, e.g. 2.5" name="predicted_err:${escapeHtml(image)}" value="${escapeHtml(err ?? '')}" placeholder="d" aria-label="Uncertainty for image ${escapeHtml(image)} in days" /> d
-      ${Number.isFinite(Number(delay)) && delay !== null && delay !== undefined ? `<span class="muted delay-note">Δt ${Number(delay) >= 0 ? '+' : ''}${escapeHtml(String(delay))} d</span>` : ''}
+  // The time delay (time_delays.predicted, days relative to the reference
+  // image) is what's entered and stored; the arrival date is derived from it.
+  const delayInputs = (image, delay, err) => `
+    <span class="delay-cell">
+      <input class="delay-input" type="text" inputmode="decimal" pattern="${SIGNED_DECIMAL_PATTERN}" title="Days relative to image ${escapeHtml(ref)}, e.g. 9.5 (may be negative)" name="delay:${escapeHtml(image)}" value="${escapeHtml(delay ?? '')}" aria-label="Estimated time delay of image ${escapeHtml(image)} in days" />
+      ± <input class="err-input" type="text" inputmode="decimal" pattern="${DECIMAL_PATTERN}" title="1σ uncertainty in days, e.g. 2.5" name="delay_err:${escapeHtml(image)}" value="${escapeHtml(err ?? '')}" aria-label="1σ uncertainty of image ${escapeHtml(image)}'s time delay in days" /> d
     </span>`;
+  const arrivalCell = (image, delay) => `<span class="muted" data-arrival="${escapeHtml(image)}">${escapeHtml(dateFromDelay(anchor, delay) ?? '—')}</span>`;
 
   const rows = imageLabels(data)
     .map((image) => {
-      const predictedCell =
-        image === ref ? '<span class="muted">reference image</span>' : predictedInputs(image, td.predicted?.[image], td.predicted_err?.[image]);
-      return `<tr><td><strong>${escapeHtml(image)}</strong></td>${IMAGE_FIELDS.map((f) => `<td>${dateInput(image, f)}</td>`).join('')}<td>${predictedCell}</td></tr>`;
+      const delayCell = image === ref ? '<span class="muted">reference image</span>' : delayInputs(image, td.predicted?.[image], td.predicted_err?.[image]);
+      const arrival = image === ref ? '' : arrivalCell(image, td.predicted?.[image]);
+      return `<tr><td><strong>${escapeHtml(image)}</strong></td>${IMAGE_FIELDS.map((f) => `<td>${dateInput(image, f)}</td>`).join('')}<td>${delayCell}</td><td>${arrival}</td></tr>`;
     })
     .join('');
 
   const next = arrivals[0];
   const summary = next
-    ? `Next image expected: <strong>${escapeHtml(next.image)}</strong> ~${escapeHtml(fmtArrival(next))}`
-    : 'No predicted arrivals yet — enter them in the last column.';
+    ? `Next image expected: <strong>${escapeHtml(next.image)}</strong> ~${escapeHtml(next.date)}`
+    : 'No predicted arrivals yet — enter estimated time delays below.';
   const anchorNote = anchor
-    ? `Predicted arrivals are saved as time delays from ${data?.image_dates?.[ref]?.detected ? `image ${escapeHtml(ref)}'s detected date` : 'the discovery date (until image ' + escapeHtml(ref) + ' is detected)'} (${escapeHtml(anchor)}).`
-    : `To enter predicted arrivals, first set image ${escapeHtml(ref)}'s detected date (or the candidate's discovery date).`;
+    ? `Time delays are relative to ${data?.image_dates?.[ref]?.detected ? `image ${escapeHtml(ref)}'s detected date` : `the discovery date (until image ${escapeHtml(ref)} is detected)`} (${escapeHtml(anchor)}); predicted arrival = that date + delay.`
+    : `Predicted arrivals appear once image ${escapeHtml(ref)}'s detected date (or the candidate's discovery date) is set.`;
 
   return `
     <div class="card" id="image-timeline-card">
@@ -336,13 +335,14 @@ function renderImageTimeline(data) {
       <form id="image-timeline-form">
         <div class="table-scroll">
           <table class="compact">
-            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Predicted arrival ± 1σ</th></tr></thead>
+            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Estimated time delay ± 1σ</th><th>Predicted arrival</th></tr></thead>
             <tbody>
               ${rows}
               <tr>
                 <td><input name="newImage" placeholder="add…" maxlength="3" /></td>
                 ${IMAGE_FIELDS.map((f) => `<td><input type="date" name="${f}:__new" /></td>`).join('')}
-                <td>${predictedInputs('__new', null, null)}</td>
+                <td>${delayInputs('__new', null, null)}</td>
+                <td>${arrivalCell('__new', null)}</td>
               </tr>
             </tbody>
           </table>
@@ -1096,6 +1096,17 @@ function wireImageTimelineForm(container, ctx, candidate, tasks, comments) {
   if (!form) return;
   const errorEl = form.querySelector('#image-timeline-error');
 
+  // Predicted arrival follows the delay (and the reference date) as you type.
+  form.addEventListener('input', () => {
+    const values = Object.fromEntries(new FormData(form).entries());
+    const ref = referenceImage(candidate.data);
+    const anchor = arrivalAnchor(candidate.data, { [ref]: { detected: values[`detected:${ref}`] || null } });
+    form.querySelectorAll('[data-arrival]').forEach((el) => {
+      const delay = (values[`delay:${el.dataset.arrival}`] ?? '').trim();
+      el.textContent = dateFromDelay(anchor, delay === '' ? null : delay) ?? '—';
+    });
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorEl.textContent = '';
@@ -1125,40 +1136,30 @@ function wireImageTimelineForm(container, ctx, candidate, tasks, comments) {
       patch[newImage] = { detected: null, peak: null, faded: null };
       for (const field of IMAGE_FIELDS) patch[newImage][field] = values[`${field}:__new`] || null;
     }
-    if (!newImage && (values['predicted:__new'] || values['predicted_err:__new'])) {
-      errorEl.textContent = 'Give the new image a label (first column) to save its predicted arrival.';
+    if (!newImage && (values['delay:__new'] || values['delay_err:__new'])) {
+      errorEl.textContent = 'Give the new image a label (first column) to save its time delay.';
       return;
     }
 
-    // Predicted arrivals: dates in the form, delays from the anchor in the data.
-    // The anchor uses this same submission's dates, so setting the reference
-    // image's detected date and a prediction together works.
+    // Estimated time delays (± 1σ) go straight into time_delays.predicted /
+    // predicted_err; an empty box removes that entry.
     const ref = referenceImage(candidate.data);
-    const oldAnchor = arrivalAnchor(candidate.data);
-    const newImageDates = { ...current, ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, { ...(current[k] ?? {}), ...v }])) };
-    const anchor = arrivalAnchor(candidate.data, newImageDates);
     const td = candidate.data.time_delays ?? {};
     const predicted = { ...(td.predicted ?? {}) };
     const predictedErr = { ...(td.predicted_err ?? {}) };
-    const predictionImages = [...imageLabels(candidate.data).filter((i) => i !== ref).map((i) => [i, i]), ...(newImage ? [[newImage, '__new']] : [])];
-    for (const [image, key] of predictionImages) {
-      const date = values[`predicted:${key}`] || '';
-      const errRaw = (values[`predicted_err:${key}`] ?? '').trim();
-      // Untouched date → keep the stored delay exactly (it may be fractional, e.g. 9.5).
-      const shownDate = dateFromDelay(oldAnchor, td.predicted?.[image]) ?? '';
-      // (If only the anchor changed, the stored delay stays and the date moves with it.)
-      if (date !== shownDate) {
-        if (!date) delete predicted[image];
-        else if (!anchor) {
-          errorEl.textContent = `Set image ${ref}'s detected date (or the discovery date) before entering predicted arrivals.`;
+    const delayImages = [...imageLabels(candidate.data).filter((i) => i !== ref).map((i) => [i, i]), ...(newImage ? [[newImage, '__new']] : [])];
+    for (const [image, key] of delayImages) {
+      for (const [raw, target, label, min] of [
+        [values[`delay:${key}`], predicted, 'Time delay', -Infinity],
+        [values[`delay_err:${key}`], predictedErr, 'Time-delay uncertainty', 0],
+      ]) {
+        const text = (raw ?? '').trim();
+        if (text === '') delete target[image];
+        else if (!Number.isFinite(Number(text)) || Number(text) < min) {
+          errorEl.textContent = `${label} for image ${image} should be a number of days${min === 0 ? ' (≥ 0)' : ''}, e.g. 2.5.`;
           return;
-        } else predicted[image] = delayFromDate(anchor, date);
+        } else target[image] = Number(text);
       }
-      if (errRaw === '') delete predictedErr[image];
-      else if (!Number.isFinite(Number(errRaw)) || Number(errRaw) < 0) {
-        errorEl.textContent = `Uncertainty for image ${image} should be a number of days, e.g. 2.5.`;
-        return;
-      } else predictedErr[image] = Number(errRaw);
     }
     const sameMap = (a = {}, b = {}) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
     const delaysChanged = !sameMap(predicted, td.predicted) || !sameMap(predictedErr, td.predicted_err);

@@ -223,12 +223,13 @@ expanded while any is open. Change-status warns — never blocks — when moving
 forward with open tasks in the current phase's tracks, or into a terminal
 status with any open task.
 
-**Predicted arrivals are edited as dates but stored as delays.** The Image
-timeline's last column shows `arrivalAnchor` (reference image's detected date,
-else discovery_date) + `time_delays.predicted[X]`, ± `predicted_err[X]`. On save,
-a changed date becomes `delayFromDate(anchor, date)` (whole days); an untouched
-date keeps the stored delay exactly (it may be fractional, e.g. from modelling).
-`time_delays` is written with `replace` so a cleared prediction is removed.
+**Time delays are entered; arrival dates are derived.** The Image timeline's
+"Estimated time delay ± 1σ" column edits `time_delays.predicted[X]` /
+`predicted_err[X]` (days relative to the reference image, may be negative or
+fractional); "Predicted arrival" is read-only `dateFromDelay(arrivalAnchor, delay)`
+— anchor = reference image's detected date, else discovery_date — recomputed
+live as you type. `time_delays` is written with `replace` so a cleared entry
+is removed.
 
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use

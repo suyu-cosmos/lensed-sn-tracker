@@ -187,11 +187,6 @@ export function dateFromDelay(anchor, delayDays) {
   return new Date(dayStart(anchor) + Number(delayDays) * DAY_MS).toISOString().slice(0, 10);
 }
 
-/** Whole days from anchor to date (may be negative). */
-export function delayFromDate(anchor, date) {
-  return Math.round((dayStart(date) - dayStart(anchor)) / DAY_MS);
-}
-
 /**
  * Predicted arrival of every image not yet detected, from time_delays and
  * image_dates: date = arrivalAnchor + predicted[X], ± predicted_err[X] days.
