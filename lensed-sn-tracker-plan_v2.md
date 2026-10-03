@@ -28,7 +28,8 @@ Trigger observations (PI + lead assigned, pre-filled PI email) and Archival obse
 the phase's tracks; log each night of data on a trigger; see everything on track cards, an
 Observation log and the dashboard (track chips, main lead, visible tonight, next action).
 Data repo: three YAML files + issue templates (candidate, trigger, archival, analysis), labels
-from `setup-labels.js`. Test data: candidates 6 (false positive, closed) and 7.
+from `setup-labels.js`. Test data: none — all test candidates were deleted on 2026-10-03 for a
+fresh end-to-end test (the next issue number will be #32; GitHub never reuses numbers).
 
 Known gaps / open items: `analysis` and `decision` are still the bare original forms (next
 item); placeholder GitHub usernames (stefant, alejandram, yushanx) can't be assigned until
