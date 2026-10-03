@@ -6,49 +6,46 @@ structured data lives as YAML in the private
 [`lensed-sn-data`](../lensed-sn-data) repo, and per-candidate work lives as
 GitHub issues there. See `lensed-sn-tracker-plan_v2.md` for the full design.
 
-## Milestone 1 — read-only dashboard
+Live at https://suyu-cosmos.github.io/lensed-sn-tracker/. Current status
+and what's next: §0 of `lensed-sn-tracker-plan_v2.md`.
 
-- Load `facilities.yaml`, `people.yaml`, `rules.yaml` and every
-  `type:candidate` issue from the data repo via a pasted GitHub PAT.
-- Dashboard: candidate / status / tracks / main lead / visible-tonight / next action.
-- Candidate page: roles, per-facility visibility for tonight + the next
-  `lookahead_nights` nights, tasks, observation log, next steps, comments.
-- Resources and People pages as sortable tables.
-- `setup-labels.js` (in the data repo) creates every label idempotently.
+## What it does
 
-## Milestone 2 — writing from the app (auth still a pasted PAT — see below)
-
-- **+ New candidate** page: creates the parent issue (YAML block +
-  `type:candidate`/`status:*`/`cand:<id>` labels) directly via the API.
-- **Add task** (on the candidate page): creates a Trigger observation /
-  Archival observations / analysis / decision sub-issue with `cand:`/
-  `facility:`/`track:` labels set.
-- **Trigger observation** (type `trigger`): data requested from one of our
-  facilities. Also surfaces a pre-filled `mailto:` link to the PI with
-  coordinates, a finder chart, and tonight's visibility window; nights of
-  data taken are recorded on the same issue with **+ Log observation**.
-- **Archival observations** (type `archival`): data we didn't request
-  (surveys, archives, other groups) — free-text source, data date range.
-- **Change status**: updates the candidate's YAML `status:` field *and*
-  swaps its `status:*` label to match, closing the drift the two could get
-  into if only one were updated by hand.
-- GitHub OAuth via a Cloudflare Worker (replacing the pasted PAT) was
-  deliberately **not** built yet — see CLAUDE.md's "Auth" note for why and
-  what would need to change to add it.
+- **Dashboard**: one row per candidate — status (phase), track chips
+  (● active · ○ not started · ⏳ waiting · ✓ done), main lead, "visible
+  tonight: N of M", next action. Finished candidates hidden behind a toggle.
+- **+ New candidate**: id, coordinates and main lead required; starting
+  status and the roles relevant to it.
+- **Candidate page**:
+  - Roles card (phase-relevant roles; editable per candidate).
+  - Change status: warns about open tasks; finished statuses close the
+    candidate issue on GitHub, and moving back reopens it.
+  - Per-facility visibility for tonight and the next nights.
+  - Image timeline: detected / peak / faded dates; estimated time delay ±
+    1σ, from which the predicted arrival date is computed.
+  - Follow-up track cards for the current phase, with compact task lines.
+  - Add task: **Trigger observation** (one of our facilities; PI + lead
+    assigned; pre-filled PI email; nights of data recorded with
+    **✎ Log observation**), **Archival observations** (survey, archive or
+    other group's data), analysis, decision.
+  - Observation log, discussion.
+- **Resources** and **People** pages.
+- All dates are shown and entered as yyyy-mm-dd.
+- Auth is a pasted fine-grained PAT; GitHub OAuth via a Cloudflare Worker
+  was deliberately not built yet (see CLAUDE.md "Auth").
 
 ## Getting started
 
 ```sh
 npm install
 npm run dev       # http://localhost:5173
-npm test          # vitest — visibility engine + write payload builders + yaml date-parsing
+npm test          # vitest — engine, builders, rules, yaml, and jsdom page/date-field tests
 npm run build     # -> dist/, deployed by .github/workflows/deploy.yml
 ```
 
 On first load the app asks for a GitHub personal access token. Use a
 fine-grained token scoped to the `lensed-sn-data` repo with **Contents:
-read-only** and **Issues: read & write** (bumped from read-only now that
-Milestone 2 writes issues); it is kept in `localStorage` only.
+read-only** and **Issues: read & write**; it is kept in `localStorage` only.
 
 ## Config
 
@@ -62,20 +59,18 @@ org or account.
 src/
   lib/
     auth.js         PAT storage (localStorage)
-    github.js       Octokit wrapper: reads + writes (issues, labels, yaml files, comments)
+    github.js       Octokit wrapper: reads + writes (issues, labels, yaml files, comments); no browser cache
     yaml.js         parses/serializes the fenced ```yaml block in every issue body
-    data.js         assembles one app-state snapshot; refreshCandidates() after a write
-    rules.js        status lookup, transitions, role resolution (plan §4.1/§6.1)
+    data.js         app-state snapshot; candidate detail; refreshCandidate / mergeTasks
+    rules.js        statuses, transitions, roles (§4.1), tracks (§6.2), dashboard summaries, time-delay dates
     visibility.js   Sun/Moon/airmass visibility engine (astronomy-engine)
-    write.js        title/label/body conventions for every write (new candidate, add task, change status, trigger mailto)
+    write.js        every write's title/label/body convention (candidate, tasks, status, roles, observations, PI email)
+    dateinput.js    yyyy-mm-dd date fields + calendar popup
     format.js       small HTML/date formatting helpers
-    sortable.js      click-to-sort table headers
-  pages/            one render(container, ctx[, params]) module per route,
-                    including new-candidate.js; candidate.js also wires the
-                    add-task and change-status forms
+    sortable.js     click-to-sort table headers
+  pages/            one render(container, ctx[, params]) module per route:
+                    dashboard, candidate (all candidate-page forms), new-candidate, resources, people
   router.js         minimal hash router
-  main.js           PAT gate -> load data -> mount router
-test/
-  visibility.test.js
-  write.test.js
+  main.js           PAT gate -> load data -> mount router; version stamp footer
+test/               vitest; *.test.js per lib module, plus jsdom tests of the candidate page and date fields
 ```

@@ -4,6 +4,39 @@ A coordination tool for a ~20-person group following up gravitationally lensed s
 
 ---
 
+## 0. Status snapshot (2026-10-03)
+
+Live at https://suyu-cosmos.github.io/lensed-sn-tracker/ (the footer shows the deployed commit).
+The whole **data-gathering** workflow is built and has been tested end to end on test
+candidates, from "New candidate" through "Data complete" / "False positive":
+
+| Milestone | State |
+|---|---|
+| 1 — read-only dashboard + visibility | done |
+| 2 — writing from the app | done, except GitHub OAuth (deliberately deferred; pasted PAT with Issues read & write) |
+| 2.5 — workflow phases and tracks | done (Steps 0–6 + the testing refinements listed under it) |
+| 2.6 — Trigger observation + Archival observations | done |
+| **Next: analysis and decision tasks** | to be designed — how the `analysis` and `decision` task types should work, and how that relates to Milestone 4 (analysis tracking) |
+| 3 — automation | not started |
+| 4 — analysis tracking | not started; to be shaped together with the next item |
+
+What a user can do today: create a candidate (id, coordinates, main lead; roles per phase);
+move it through the phases with warnings for open work and automatic close/reopen of the
+candidate issue on finished statuses; see per-facility visibility; record image detected/peak/
+faded dates and estimated time delays ± 1σ (predicted arrival computed from them); file
+Trigger observations (PI + lead assigned, pre-filled PI email) and Archival observations into
+the phase's tracks; log each night of data on a trigger; see everything on track cards, an
+Observation log and the dashboard (track chips, main lead, visible tonight, next action).
+Data repo: three YAML files + issue templates (candidate, trigger, archival, analysis), labels
+from `setup-labels.js`. Test data: candidates 6 (false positive, closed) and 7.
+
+Known gaps / open items: `analysis` and `decision` are still the bare original forms (next
+item); placeholder GitHub usernames (stefant, alejandram, yushanx) can't be assigned until
+real, invited accounts replace them in `people.yaml`; several `facilities.yaml` values are TBC
+(NTT program id/response time, HST PI, SOXS window); no automation/alerts yet (Milestone 3).
+
+---
+
 ## 1. Architecture summary
 
 - **Frontend**: static single-page web app (plain HTML/JS or a light framework such as Preact/Vite), hosted on GitHub Pages from the public code repo.
@@ -411,18 +444,18 @@ Changing `owner` here and transferring the repos is the whole migration.
 ### Milestone 1 — read-only dashboard + visibility (aim: 1–2 weeks)
 - Load `facilities.yaml`, `people.yaml`, `rules.yaml` and all `type:candidate` issues via the GitHub API using a PAT.
 - Dashboard table: candidate, status, main lead, "visible tonight: N of M" with facility names, next action (first open sub-issue by due date).
-- Candidate page: header, visibility panel for tonight and next 7 nights (altitude curves, window, best airmass, moon separation), task list (sub-issues), observation log (`type:observation` sub-issues), suggested next steps from `rules.yaml`, threaded comments.
+- Candidate page: header, visibility panel for tonight and next 7 nights (altitude curves, window, best airmass, moon separation), task list (sub-issues), observation log (originally `type:observation` sub-issues; since Milestone 2.6 the nights logged on triggers + archival data), suggested next steps from `rules.yaml`, threaded comments.
 - Resources page and People page as sortable tables.
 - Setup script that creates all labels in the data repo.
 
 ### Milestone 2 — writing from the app
 - "New candidate" form → creates parent issue with YAML block and `cand:` label. **[done]**
 - "Add task" → creates sub-issue linked to parent. **[done]**
-- "Trigger" button → opens a pre-filled mailto to the PI with coordinates, finder-chart link, visibility window, and creates a `type:trigger` sub-issue. **[done]** To = the program PI (instrument-level `pi:` overrides facility `contact.pi`); CC = the mode's lead role (spectroscopy_lead / photometry_lead) + coordinator.
+- "Trigger" button → opens a pre-filled mailto to the PI with coordinates, finder-chart link, visibility window, and creates a `type:trigger` sub-issue. **[done]** To = the program PI (instrument-level `pi:` overrides facility `contact.pi`); CC = the mode's lead role (spectroscopy_lead / photometry_lead) + main_lead.
 - Change status → updates `status:` label. **[done]** (updates the YAML field and the label together)
 - GitHub OAuth via Cloudflare Worker replaces the PAT. **[deferred on purpose — PAT with Issues read & write for now]**
 
-### Milestone 2.5 — workflow phases and tracks (next)
+### Milestone 2.5 — workflow phases and tracks [done]
 
 Implements §6.2. Each step is independently shippable; do them in order. Every step keeps
 existing candidates working (only additive keys, except the one rename already done).
@@ -557,7 +590,32 @@ a person writes it to `roles_override` (plan §4.1 level 1).
 - All test issues and `cand:*` labels from the pre-M2.5 system were deleted at the user's
   request, so no backward-compatibility code for `leads:` / old statuses was kept.
 
-**Step 6 — docs.** Update both CLAUDE.md files and this section's `[done]` markers.
+**Also done during M2.5 (end-to-end testing, 2026-09-30 – 10-03, user requests):**
+- **Confirmation tracks:** `phot_confirmation` / `spec_confirmation` (both `optional: true`)
+  in New candidate and Awaiting confirmation; optional tracks never produce a "Start …" action.
+- **Trigger assignees:** program PI (instrument `pi:` over facility `contact.pi`) + the track
+  role holder; on a 422 the app keeps the assignable ones (`checkUserCanBeAssigned`).
+- **Tasks of other phases** are grouped per track with its derived state (expanded while any
+  is open); trackless phases (data_complete, false_positive) show "Tasks by track".
+  Change-status warns (never blocks) when moving on with open tasks in the current phase.
+- **Finished statuses close the candidate issue** (`terminal`; `close_as: not_planned` +
+  `close_comment` for false_positive) and moving back reopens it. Data complete keeps the
+  photometry/spectroscopy/lens-modelling leads active (they coordinate the analysis).
+- **Per-image tracks** allow several tasks per image.
+- **Task UI:** compact one-line tasks (state dot, instrument · facility `short:`, key date,
+  assignee initials, `#n↗`), per-image groups, folded purposes, blue actions ("+ Add task"
+  outlined; per-task actions such as "✎ Log observation" as a pale-blue chip under the task).
+- **Image timeline:** estimated time delay ± 1σ is entered (stored in `time_delays.predicted`
+  / `predicted_err`); predicted arrival is computed from it, live.
+- **Dates are yyyy-mm-dd everywhere** (`src/lib/dateinput.js`, own calendar popup — a native
+  picker can't be forced year-first).
+- **Freshness:** no browser caching of GitHub reads (`cache: 'no-cache'`); candidate page
+  re-reads on tab return and has ↻ Refresh; a lagging task list never drops known tasks
+  (`mergeTasks`).
+- Facilities: SOXS moved to a new `ntt` entry; Keck removed earlier.
+
+**Step 6 — docs. [done]** Both CLAUDE.md files, the README and this plan (incl. §0 status
+snapshot) brought up to date on 2026-10-03.
 
 **Acceptance check** (manual, on a test candidate): confirm → Live follow-up shows four track
 cards; add a daily GROND trigger to Photometric monitoring (assignee = photometry_lead);

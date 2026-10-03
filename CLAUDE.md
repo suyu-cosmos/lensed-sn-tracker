@@ -4,44 +4,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A static, no-server web app (Vite + vanilla JS) that is a dashboard,
-visibility calculator, and now (Milestone 2) a write front-end for a small
-group following up gravitationally lensed supernovae. There is no backend:
-all structured data (facilities, people, rules/workflow) and all
-per-candidate work items live as YAML and GitHub issues in the sibling
-private repo `lensed-sn-data` (checked out alongside this one, e.g.
-`../lensed-sn-data`). This repo talks to that repo entirely via the GitHub
-API (Octokit) using a personal access token pasted by the user and kept in
-`localStorage` — a fine-grained PAT with Contents: read-only and Issues:
-**read & write** (bumped from read-only once Milestone 2 added writes).
+A static, no-server web app (Vite + vanilla JS) that is the dashboard,
+visibility calculator and write front-end for a small group following up
+gravitationally lensed supernovae. There is no backend: all structured data
+(facilities, people, rules/workflow) and all per-candidate work items live
+as YAML and GitHub issues in the sibling private repo `lensed-sn-data`
+(checked out alongside this one, e.g. `../lensed-sn-data`). This repo talks
+to that repo entirely via the GitHub API (Octokit) using a personal access
+token pasted by the user and kept in `localStorage` — a fine-grained PAT
+with Contents: read-only and Issues: **read & write**.
 
 The full design spec (data model, issue conventions, milestones) is
 `lensed-sn-tracker-plan_v2.md` at the repo root — read it before making
-structural changes. **Milestone 1** (read-only dashboard) and the write
-half of **Milestone 2** (new-candidate/add-task/trigger/change-status) are
-built; GitHub OAuth via a Cloudflare Worker (the rest of Milestone 2) was
-deliberately deferred — see "Auth" below.
+structural changes. **Its §0 "Status snapshot" says what's built and what's
+next; the plan file, not this summary, is the source of truth for that.**
+As of 2026-10-03: Milestones 1, 2 (minus OAuth, deliberately deferred — see
+"Auth" below), 2.5 (phases + tracks) and 2.6 (Trigger observation +
+Archival observations) are done and tested end to end. **Next up: designing
+the `analysis` and `decision` task types** (still the bare original forms),
+together with Milestone 4 (analysis tracking). When implementing a new
+milestone, write it into the plan first, then work through its steps and
+mark them `[done]` there as you go.
 
-**Next up is Milestone 2.5 — workflow phases and tracks** (plan §6.2 for the
-model, §8 "Milestone 2.5" for the step-by-step implementation plan with an
-acceptance check). Short version: a candidate's `status` is its coarse
-*phase* (new_candidate → awaiting_confirmation → lensed_sn "Live follow-up"
-→ post_fade → data_complete, or false_positive), and the parallel science
-workstreams inside a phase (photometric monitoring, spectroscopic
-monitoring, HST/JWST, early-phase spectroscopy of each trailing image, …)
-are *tracks* declared in `rules.yaml` and recorded on each task as
-`track:`. Track state is derived from tasks, never stored; per-image tracks
-are optional per image. Work through the plan's steps in order and mark
-them `[done]` there as you go — the plan file is the source of truth for
-what's built vs. pending, not this summary. Analysis tracking is
-Milestone 4, after data gathering works.
+Workflow model in one paragraph (plan §6.2): a candidate's `status` is its
+coarse *phase* (new_candidate → awaiting_confirmation → lensed_sn "Live
+follow-up" → post_fade → data_complete, or false_positive), and the
+parallel science workstreams inside a phase (photometric/spectroscopic
+confirmation, photometric/spectroscopic monitoring, HST/JWST, early-phase
+spectroscopy of each trailing image, post-fade lens follow-up) are *tracks*
+declared in `rules.yaml` and recorded on each task as `track:`. Track state
+is derived from tasks, never stored; per-image tracks are optional per image.
 
 ## Commands
 
 ```sh
 npm install
 npm run dev       # Vite dev server, http://localhost:5173
-npm test          # vitest run — visibility, write, rules (tracks), yaml tests
+npm test          # vitest run — visibility, write, rules, yaml, github, data, date-field and candidate-page (jsdom) tests
 npm run build     # -> dist/, what .github/workflows/deploy.yml deploys
 npm run preview   # serve the production build locally
 ```
