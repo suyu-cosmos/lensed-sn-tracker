@@ -176,6 +176,16 @@ display: block }` overriding a hidden label. Fixed globally with
 don't remove it, and don't add another rule that sets `display` on an
 element type that might also carry `hidden` without checking this first.
 
+**Dates are year-first everywhere (yyyy-mm-dd).** Don't use a bare
+`<input type="date">`: it displays in the viewer's locale (dd/mm vs mm/dd),
+which a page can't override. Use `dateInputHtml(name, value)` from
+`src/lib/dateinput.js` — a yyyy-mm-dd text box plus a 📅 that opens the
+native calendar (wired once app-wide by `installDatePickers` in main.js) —
+and `utcDateTimeInputHtml`/`utcDateTimeValue` for a UTC date+time. Also,
+`th` is `text-transform: uppercase`, which turns σ into Σ: wrap such
+characters in `<span class="nocase">`. Tests that need a DOM use
+`// @vitest-environment jsdom` (jsdom is a devDependency).
+
 **Routing is a ~40-line hand-rolled hash router** (`src/router.js`): register
 `route('/pattern/:id', handler)`, then `start()`. Each page module exports a
 single `render(container, ctx[, params])` and owns its own DOM (built via

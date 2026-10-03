@@ -8,6 +8,7 @@ import { buildCandidateIssue, LENS_TYPES, SN_TYPES } from '../lib/write.js';
 import { activeStatuses, findPerson, rolesForStatus, assignablePeople, resolveRole } from '../lib/rules.js';
 import { escapeHtml } from '../lib/format.js';
 import { parseIssueBody } from '../lib/yaml.js';
+import { dateInputHtml } from '../lib/dateinput.js';
 import { navigate } from '../router.js';
 
 function optionEls(values, labels = values, selected = null) {
@@ -82,7 +83,7 @@ export function render(container, ctx) {
       <label>Candidate id * <input name="id" required placeholder="LSN-2026abc" /></label>
       <label>TNS name <input name="tnsName" placeholder="SN 2026abc" /></label>
       <label>Discovery survey <input name="discoverySurvey" /></label>
-      <label>Discovery date <input name="discoveryDate" type="date" /></label>
+      <label>Discovery date ${dateInputHtml('discoveryDate')}</label>
       <label>RA (deg, J2000) * <input name="raDeg" type="text" inputmode="decimal" pattern="[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)" title="A decimal number, e.g. 188.7363" required /></label>
       <label>Dec (deg, J2000) * <input name="decDeg" type="text" inputmode="decimal" pattern="[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)" title="A decimal number, e.g. -21.12" required /></label>
 

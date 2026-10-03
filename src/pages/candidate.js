@@ -48,6 +48,7 @@ import {
   INSTRUMENT_MODES,
 } from '../lib/write.js';
 import { escapeHtml, statusPillHtml, formatUtc, formatMinutes } from '../lib/format.js';
+import { dateInputHtml, utcDateTimeInputHtml, utcDateTimeValue } from '../lib/dateinput.js';
 
 function findCandidate(candidates, routeId) {
   if (routeId.startsWith('issue-')) {
@@ -302,7 +303,7 @@ function renderImageTimeline(data) {
   const td = data?.time_delays ?? {};
   const arrivals = predictedArrivals(data);
   const dateInput = (image, field) =>
-    `<input type="date" name="${field}:${escapeHtml(image)}" value="${escapeHtml(data?.image_dates?.[image]?.[field] ?? '')}" />`;
+    dateInputHtml(`${field}:${image}`, data?.image_dates?.[image]?.[field] ?? '', { ariaLabel: `Image ${image} ${field}` });
   // The time delay (time_delays.predicted, days relative to the reference
   // image) is what's entered and stored; the arrival date is derived from it.
   const delayInputs = (image, delay, err) => `
@@ -335,12 +336,12 @@ function renderImageTimeline(data) {
       <form id="image-timeline-form">
         <div class="table-scroll">
           <table class="compact">
-            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Estimated time delay ± 1σ</th><th>Predicted arrival</th></tr></thead>
+            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Estimated time delay ± 1<span class="nocase">σ</span></th><th>Predicted arrival</th></tr></thead>
             <tbody>
               ${rows}
               <tr>
                 <td><input name="newImage" placeholder="add…" maxlength="3" /></td>
-                ${IMAGE_FIELDS.map((f) => `<td><input type="date" name="${f}:__new" /></td>`).join('')}
+                ${IMAGE_FIELDS.map((f) => `<td>${dateInputHtml(`${f}:__new`, '', { ariaLabel: `New image ${f}` })}</td>`).join('')}
                 <td>${delayInputs('__new', null, null)}</td>
                 <td>${arrivalCell('__new', null)}</td>
               </tr>
@@ -599,16 +600,16 @@ function renderAddTask(facilities, tracks) {
           <label>Instrument <select name="instrument" data-role="instrument"></select></label>
           <label>Mode <select name="mode" data-role="mode"></select></label>
           <label data-role="filter-wrap" hidden>Wavelength band <select name="filterBand" data-role="filter"></select></label>
-          <label>Requested date <input name="requestedDate" type="date" /></label>
+          <label>Requested date ${dateInputHtml('requestedDate')}</label>
           <label>Cadence (days; blank = one-off) <input name="cadenceDays" type="number" min="0" step="any" /></label>
-          <label>Until (end of a recurring campaign) <input name="until" type="date" /></label>
+          <label>Until (end of a recurring campaign) ${dateInputHtml('until')}</label>
           <label data-role="images-wrap">Images <input name="images" placeholder="A, B" /></label>
         </fieldset>
 
         <fieldset data-type="observation" hidden>
           <label>Facility <select name="facility2" data-role="facility">${facilityOptions}</select></label>
           <label>Instrument <select name="instrument2" data-role="instrument"></select></label>
-          <label>Obs. UTC <input name="obsUtc" type="datetime-local" /></label>
+          <label>Obs. UTC ${utcDateTimeInputHtml('obsUtc')}</label>
           <label>Filters/setup <input name="filtersSetup" /></label>
           <label>Conditions <input name="conditions" /></label>
           <label>Data location <input name="dataLocation" /></label>
@@ -623,7 +624,7 @@ function renderAddTask(facilities, tracks) {
 
         <fieldset data-type="decision" hidden>
           <label>Summary (used in the title) <input name="summary" placeholder="which facility to trigger?" /></label>
-          <label>Deadline <input name="deadline" type="date" /></label>
+          <label>Deadline ${dateInputHtml('deadline')}</label>
           <label>Options <input name="options" placeholder="comma-separated" /></label>
         </fieldset>
 
@@ -928,7 +929,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
           ? {
               facility: values.facility2,
               instrument: values.instrument2,
-              obsUtc: values.obsUtc,
+              obsUtc: utcDateTimeValue(values.obsUtc),
               filtersSetup: values.filtersSetup,
               conditions: values.conditions,
               dataLocation: values.dataLocation,

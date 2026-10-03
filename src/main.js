@@ -4,6 +4,7 @@
 import { getToken, setToken, clearToken } from './lib/auth.js';
 import { loadAppData, config } from './lib/data.js';
 import { route, start } from './router.js';
+import { installDatePickers } from './lib/dateinput.js';
 import * as dashboard from './pages/dashboard.js';
 import * as candidatePage from './pages/candidate.js';
 import * as resources from './pages/resources.js';
@@ -11,6 +12,7 @@ import * as people from './pages/people.js';
 import * as newCandidate from './pages/new-candidate.js';
 
 const appEl = document.getElementById('app');
+installDatePickers(document); // year-first date fields' 📅 buttons, app-wide
 
 function renderLogin(onSubmit, errorMessage) {
   appEl.innerHTML = `
