@@ -231,7 +231,14 @@ ul.task-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-dir
 .task-num:hover { text-decoration: underline; }
 .task-move { flex: none; white-space: nowrap; }
 .task-move select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.8rem; margin: 0; }
-.task-when button.linklike { font-size: inherit; }
+/* "Log obs" acts on one task, so it looks like a quiet chip on the line — unlike the blue "+ Add task" buttons, which create tasks. */
+button.log-obs-btn {
+  flex: none; white-space: nowrap; cursor: pointer;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 999px;
+  padding: 0.15rem 0.55rem; font-size: 0.75rem; font-weight: 600;
+}
+button.log-obs-btn:hover { border-color: var(--green); color: var(--green); background: var(--panel); }
+button.log-obs-btn[aria-expanded="true"] { border-color: var(--green); color: var(--green); background: var(--panel); }
 table.obs-log td { font-size: 0.85rem; }
 table.obs-log td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
 li.log-obs-row { padding: 0.3rem 0.45rem 0.5rem 1.55rem; }

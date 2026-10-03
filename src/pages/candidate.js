@@ -264,16 +264,13 @@ function renderTaskLine(t, ctx, opts = {}) {
       <span class="task-dot" title="${TASK_STATE_TITLE[state]}"></span>
       <span class="task-main">
         <span class="task-what">${typeTag}${escapeHtml(taskWhat(t, ctx.facilities))}${t.data?.image && opts.image ? ` <span class="muted">· image ${escapeHtml(t.data.image)}</span>` : ''}</span>
-        ${
-          when || trackLabel || t.type === 'trigger'
-            ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}${
-                t.type === 'trigger' && t.data
-                  ? `${when || trackLabel ? ' · ' : ''}<button type="button" class="linklike" data-log-obs="${t.issue.number}" title="Record a night of data taken for this trigger">+ Log observation</button>`
-                  : ''
-              }</span>`
-            : ''
-        }
+        ${when || trackLabel ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}</span>` : ''}
       </span>
+      ${
+        t.type === 'trigger' && t.data
+          ? `<button type="button" class="log-obs-btn" data-log-obs="${t.issue.number}" title="Record a night of data taken for this trigger">✎ Log obs</button>`
+          : ''
+      }
       <span class="task-people">${people || '<span class="avatar empty" title="No assignee — assign someone on GitHub">?</span>'}</span>
       <a class="task-num" href="${t.issue.html_url}" target="_blank" rel="noreferrer" title="${escapeHtml(t.issue.title)}">#${t.issue.number}↗</a>
       ${move}
@@ -423,7 +420,7 @@ function renderTrackCard(ctx, track, data, tasks) {
             <span class="muted">${g.detected ? `detected ${escapeHtml(g.detected)}` : ''}${g.tasks.length ? '' : `${g.detected ? ' · ' : ''}not targeted`}</span>
           </div>
           ${renderTaskLines(g.tasks, ctx, { ...lineOpts, empty: '' })}
-          ${image && g.detected ? addBtn(g.tasks.length ? '+ Add another' : '+ Add task', image) : ''}
+          ${image && g.detected ? addBtn(g.tasks.length ? '+ Add another task' : '+ Add task', image) : ''}
         </div>`,
           )
           .join('')
@@ -1147,8 +1144,10 @@ function wireLogObservation(container, ctx, candidate, tasks, comments) {
       const existing = line.nextElementSibling?.classList.contains('log-obs-row') ? line.nextElementSibling : null;
       if (existing) {
         existing.remove();
+        btn.setAttribute('aria-expanded', 'false');
         return;
       }
+      btn.setAttribute('aria-expanded', 'true');
       const number = Number(btn.dataset.logObs);
       const row = document.createElement('li');
       row.className = 'log-obs-row';
@@ -1168,7 +1167,10 @@ function wireLogObservation(container, ctx, candidate, tasks, comments) {
       line.after(row);
       const form = row.querySelector('form');
       const errorEl = form.querySelector('.error');
-      form.querySelector('[data-cancel]').addEventListener('click', () => row.remove());
+      form.querySelector('[data-cancel]').addEventListener('click', () => {
+        row.remove();
+        btn.setAttribute('aria-expanded', 'false');
+      });
       form.querySelector('input[name="obsUtc"]').focus();
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
