@@ -201,8 +201,8 @@ visible again — skipped if any form on the page has been typed into
 
 **Candidate page layout (Milestone 2.5).** `renderCandidatePage` builds, in
 order: header + Change-status (with the all-images-faded → post_fade *hint*),
-Visibility, Suggested next steps, **Image timeline** (edits `image_dates` via
-`updateCandidateFields`), **Follow-up tracks** (one card per track of the
+Visibility, Suggested next steps, **Image timeline** (edits `image_dates` and
+predicted arrivals via `updateCandidateFields`), **Follow-up tracks** (one card per track of the
 current phase + "Other tasks"; phases without tracks fall back to a flat task
 table), Add-task (Track selector first), Observation log, Discussion. Every
 handler re-renders from data it already holds — the image-timeline save uses
@@ -222,6 +222,13 @@ are grouped per track with its derived state (`renderOtherPhasesCard`),
 expanded while any is open. Change-status warns — never blocks — when moving
 forward with open tasks in the current phase's tracks, or into a terminal
 status with any open task.
+
+**Predicted arrivals are edited as dates but stored as delays.** The Image
+timeline's last column shows `arrivalAnchor` (reference image's detected date,
+else discovery_date) + `time_delays.predicted[X]`, ± `predicted_err[X]`. On save,
+a changed date becomes `delayFromDate(anchor, date)` (whole days); an untouched
+date keeps the stored delay exactly (it may be fractional, e.g. from modelling).
+`time_delays` is written with `replace` so a cleared prediction is removed.
 
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use

@@ -168,27 +168,45 @@ export function trackInstruments(track, facilities) {
   );
 }
 
+const DAY_MS = 86400000;
+const dayStart = (date) => Date.parse(`${String(date).slice(0, 10)}T00:00:00Z`);
+
+/**
+ * The date every predicted delay counts from: the reference image's detected
+ * date, else the discovery date. `imageDates` lets a caller use not-yet-saved
+ * form values. Returns 'YYYY-MM-DD' or null.
+ */
+export function arrivalAnchor(candidate, imageDates = candidate?.image_dates) {
+  const anchor = imageDates?.[referenceImage(candidate)]?.detected ?? candidate?.discovery_date;
+  return anchor && !Number.isNaN(dayStart(anchor)) ? String(anchor).slice(0, 10) : null;
+}
+
+/** anchor + delay days → 'YYYY-MM-DD' (or null if either is missing). */
+export function dateFromDelay(anchor, delayDays) {
+  if (!anchor || delayDays === null || delayDays === undefined || delayDays === '' || !Number.isFinite(Number(delayDays))) return null;
+  return new Date(dayStart(anchor) + Number(delayDays) * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Whole days from anchor to date (may be negative). */
+export function delayFromDate(anchor, date) {
+  return Math.round((dayStart(date) - dayStart(anchor)) / DAY_MS);
+}
+
 /**
  * Predicted arrival of every image not yet detected, from time_delays and
- * image_dates: t_ref = reference image's detected date (else discovery_date),
- * date = t_ref + predicted[X], ± predicted_err[X] days. Returns
- * [{ image, date: 'YYYY-MM-DD', errDays }] sorted by date; [] if no anchor.
+ * image_dates: date = arrivalAnchor + predicted[X], ± predicted_err[X] days.
+ * Returns [{ image, date: 'YYYY-MM-DD', errDays }] sorted by date; [] if no anchor.
  * This is the same arithmetic the Milestone-3 trailing-image alert will use.
  */
 export function predictedArrivals(candidate) {
   const td = candidate?.time_delays ?? {};
   const dates = candidate?.image_dates ?? {};
-  const anchor = dates[referenceImage(candidate)]?.detected ?? candidate?.discovery_date;
+  const anchor = arrivalAnchor(candidate);
   if (!anchor) return [];
-  const t0 = Date.parse(`${String(anchor).slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(t0)) return [];
   return Object.entries(td.predicted ?? {})
-    .filter(([image, delay]) => Number.isFinite(Number(delay)) && !dates[image]?.detected)
-    .map(([image, delay]) => ({
-      image,
-      date: new Date(t0 + Number(delay) * 86400000).toISOString().slice(0, 10),
-      errDays: td.predicted_err?.[image] ?? null,
-    }))
+    .filter(([image]) => !dates[image]?.detected)
+    .map(([image, delay]) => ({ image, date: dateFromDelay(anchor, delay), errDays: td.predicted_err?.[image] ?? null }))
+    .filter((a) => a.date)
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 

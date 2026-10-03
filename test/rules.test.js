@@ -16,6 +16,9 @@ import {
   eligibleImages,
   trackInstruments,
   predictedArrivals,
+  arrivalAnchor,
+  dateFromDelay,
+  delayFromDate,
 } from '../src/lib/rules.js';
 
 const rules = {
@@ -136,6 +139,27 @@ describe('predictedArrivals', () => {
       { image: 'B', date: '2026-09-02', errDays: null },
     ]);
     expect(predictedArrivals({ time_delays: { predicted: { B: 1 } } })).toEqual([]);
+  });
+
+  it('skips a null prediction rather than treating it as a 0-day delay', () => {
+    expect(predictedArrivals({ discovery_date: '2026-09-01', time_delays: { predicted: { B: null } } })).toEqual([]);
+  });
+});
+
+describe('predicted-arrival date helpers (Image timeline form)', () => {
+  it('arrivalAnchor prefers the reference detection, accepts unsaved image dates, else discovery_date', () => {
+    const c = { discovery_date: '2026-08-30', time_delays: { reference_image: 'A' }, image_dates: {} };
+    expect(arrivalAnchor(c)).toBe('2026-08-30');
+    expect(arrivalAnchor(c, { A: { detected: '2026-09-01' } })).toBe('2026-09-01');
+    expect(arrivalAnchor({})).toBeNull();
+  });
+
+  it('date ↔ delay round-trips in whole days, including negative delays', () => {
+    expect(dateFromDelay('2026-09-01', 14)).toBe('2026-09-15');
+    expect(delayFromDate('2026-09-01', '2026-09-15')).toBe(14);
+    expect(delayFromDate('2026-09-01', '2026-08-29')).toBe(-3);
+    expect(dateFromDelay('2026-09-01', null)).toBeNull();
+    expect(dateFromDelay(null, 3)).toBeNull();
   });
 });
 

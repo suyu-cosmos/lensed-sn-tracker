@@ -30,6 +30,9 @@ import {
   assignablePeople,
   taskDueDate,
   isTerminal,
+  arrivalAnchor,
+  dateFromDelay,
+  delayFromDate,
 } from '../lib/rules.js';
 import { nightlyVisibility, upcomingVisibility } from '../lib/visibility.js';
 import { createIssue, setIssueAssignees } from '../lib/github.js';
@@ -291,26 +294,40 @@ function allImagesFaded(data) {
   return images.length > 0 && images.every((image) => data?.image_dates?.[image]?.faded);
 }
 
+const DECIMAL_PATTERN = '[0-9]+\\.?[0-9]*|\\.[0-9]+';
+
 function renderImageTimeline(data) {
   const ref = referenceImage(data);
+  const anchor = arrivalAnchor(data);
+  const td = data?.time_delays ?? {};
   const arrivals = predictedArrivals(data);
-  const byImage = new Map(arrivals.map((a) => [a.image, a]));
   const fmtArrival = (a) => `${a.date}${a.errDays != null ? ` ± ${a.errDays} d` : ''}`;
   const dateInput = (image, field) =>
     `<input type="date" name="${field}:${escapeHtml(image)}" value="${escapeHtml(data?.image_dates?.[image]?.[field] ?? '')}" />`;
+  // Predicted arrival is edited as a date but stored as a delay from the anchor
+  // (time_delays.predicted), so it follows the reference image if that changes.
+  const predictedInputs = (image, delay, err) => `
+    <span class="predicted-cell">
+      <input type="date" name="predicted:${escapeHtml(image)}" value="${escapeHtml(dateFromDelay(anchor, delay) ?? '')}" aria-label="Predicted arrival of image ${escapeHtml(image)}" />
+      ± <input class="err-input" type="text" inputmode="decimal" pattern="${DECIMAL_PATTERN}" title="1σ uncertainty in days, e.g. 2.5" name="predicted_err:${escapeHtml(image)}" value="${escapeHtml(err ?? '')}" placeholder="d" aria-label="Uncertainty for image ${escapeHtml(image)} in days" /> d
+      ${Number.isFinite(Number(delay)) && delay !== null && delay !== undefined ? `<span class="muted delay-note">Δt ${Number(delay) >= 0 ? '+' : ''}${escapeHtml(String(delay))} d</span>` : ''}
+    </span>`;
 
   const rows = imageLabels(data)
     .map((image) => {
-      const a = byImage.get(image);
-      const expected = a ? fmtArrival(a) : image === ref ? 'reference image' : '—';
-      return `<tr><td><strong>${escapeHtml(image)}</strong></td>${IMAGE_FIELDS.map((f) => `<td>${dateInput(image, f)}</td>`).join('')}<td class="muted">${escapeHtml(expected)}</td></tr>`;
+      const predictedCell =
+        image === ref ? '<span class="muted">reference image</span>' : predictedInputs(image, td.predicted?.[image], td.predicted_err?.[image]);
+      return `<tr><td><strong>${escapeHtml(image)}</strong></td>${IMAGE_FIELDS.map((f) => `<td>${dateInput(image, f)}</td>`).join('')}<td>${predictedCell}</td></tr>`;
     })
     .join('');
 
   const next = arrivals[0];
   const summary = next
     ? `Next image expected: <strong>${escapeHtml(next.image)}</strong> ~${escapeHtml(fmtArrival(next))}`
-    : 'No predicted arrivals yet — fill <code>time_delays.predicted</code> (and <code>predicted_err</code>) on the candidate issue to enable this.';
+    : 'No predicted arrivals yet — enter them in the last column.';
+  const anchorNote = anchor
+    ? `Predicted arrivals are saved as time delays from ${data?.image_dates?.[ref]?.detected ? `image ${escapeHtml(ref)}'s detected date` : 'the discovery date (until image ' + escapeHtml(ref) + ' is detected)'} (${escapeHtml(anchor)}).`
+    : `To enter predicted arrivals, first set image ${escapeHtml(ref)}'s detected date (or the candidate's discovery date).`;
 
   return `
     <div class="card" id="image-timeline-card">
@@ -319,19 +336,20 @@ function renderImageTimeline(data) {
       <form id="image-timeline-form">
         <div class="table-scroll">
           <table class="compact">
-            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Predicted arrival</th></tr></thead>
+            <thead><tr><th>Image</th><th>Detected</th><th>Peak</th><th>Faded</th><th>Predicted arrival ± 1σ</th></tr></thead>
             <tbody>
               ${rows}
               <tr>
                 <td><input name="newImage" placeholder="add…" maxlength="3" /></td>
                 ${IMAGE_FIELDS.map((f) => `<td><input type="date" name="${f}:__new" /></td>`).join('')}
-                <td></td>
+                <td>${predictedInputs('__new', null, null)}</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p class="muted small">${anchorNote}</p>
         <div class="form-actions">
-          <button type="submit">Save image dates</button>
+          <button type="submit">Save image timeline</button>
           <span id="image-timeline-error" class="error"></span>
         </div>
       </form>
@@ -1107,8 +1125,45 @@ function wireImageTimelineForm(container, ctx, candidate, tasks, comments) {
       patch[newImage] = { detected: null, peak: null, faded: null };
       for (const field of IMAGE_FIELDS) patch[newImage][field] = values[`${field}:__new`] || null;
     }
+    if (!newImage && (values['predicted:__new'] || values['predicted_err:__new'])) {
+      errorEl.textContent = 'Give the new image a label (first column) to save its predicted arrival.';
+      return;
+    }
 
-    if (!Object.keys(patch).length) {
+    // Predicted arrivals: dates in the form, delays from the anchor in the data.
+    // The anchor uses this same submission's dates, so setting the reference
+    // image's detected date and a prediction together works.
+    const ref = referenceImage(candidate.data);
+    const oldAnchor = arrivalAnchor(candidate.data);
+    const newImageDates = { ...current, ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, { ...(current[k] ?? {}), ...v }])) };
+    const anchor = arrivalAnchor(candidate.data, newImageDates);
+    const td = candidate.data.time_delays ?? {};
+    const predicted = { ...(td.predicted ?? {}) };
+    const predictedErr = { ...(td.predicted_err ?? {}) };
+    const predictionImages = [...imageLabels(candidate.data).filter((i) => i !== ref).map((i) => [i, i]), ...(newImage ? [[newImage, '__new']] : [])];
+    for (const [image, key] of predictionImages) {
+      const date = values[`predicted:${key}`] || '';
+      const errRaw = (values[`predicted_err:${key}`] ?? '').trim();
+      // Untouched date → keep the stored delay exactly (it may be fractional, e.g. 9.5).
+      const shownDate = dateFromDelay(oldAnchor, td.predicted?.[image]) ?? '';
+      // (If only the anchor changed, the stored delay stays and the date moves with it.)
+      if (date !== shownDate) {
+        if (!date) delete predicted[image];
+        else if (!anchor) {
+          errorEl.textContent = `Set image ${ref}'s detected date (or the discovery date) before entering predicted arrivals.`;
+          return;
+        } else predicted[image] = delayFromDate(anchor, date);
+      }
+      if (errRaw === '') delete predictedErr[image];
+      else if (!Number.isFinite(Number(errRaw)) || Number(errRaw) < 0) {
+        errorEl.textContent = `Uncertainty for image ${image} should be a number of days, e.g. 2.5.`;
+        return;
+      } else predictedErr[image] = Number(errRaw);
+    }
+    const sameMap = (a = {}, b = {}) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+    const delaysChanged = !sameMap(predicted, td.predicted) || !sameMap(predictedErr, td.predicted_err);
+
+    if (!Object.keys(patch).length && !delaysChanged) {
       errorEl.textContent = 'Nothing changed.';
       return;
     }
@@ -1117,10 +1172,15 @@ function wireImageTimelineForm(container, ctx, candidate, tasks, comments) {
     submitBtn.disabled = true;
     try {
       // Use the write's own result rather than refetching (CLAUDE.md).
-      candidate.data = await updateCandidateFields(ctx.client, ctx.config.dataRepo, candidate, { image_dates: patch });
+      const fieldsPatch = { image_dates: patch };
+      // time_delays is replaced whole when predictions change, so a cleared prediction is really removed.
+      if (delaysChanged) fieldsPatch.time_delays = { ...td, predicted, predicted_err: predictedErr };
+      candidate.data = await updateCandidateFields(ctx.client, ctx.config.dataRepo, candidate, fieldsPatch, {
+        replace: delaysChanged ? ['time_delays'] : [],
+      });
       renderCandidatePage(container, ctx, candidate, tasks, comments);
     } catch (err) {
-      errorEl.textContent = `Could not save image dates: ${err.message}`;
+      errorEl.textContent = `Could not save the image timeline: ${err.message}`;
       submitBtn.disabled = false;
     }
   });
