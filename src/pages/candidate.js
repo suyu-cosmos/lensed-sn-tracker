@@ -265,12 +265,12 @@ function renderTaskLine(t, ctx, opts = {}) {
       <span class="task-main">
         <span class="task-what">${typeTag}${escapeHtml(taskWhat(t, ctx.facilities))}${t.data?.image && opts.image ? ` <span class="muted">· image ${escapeHtml(t.data.image)}</span>` : ''}</span>
         ${when || trackLabel ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}</span>` : ''}
+        ${
+          t.type === 'trigger' && t.data
+            ? `<span class="task-actions"><button type="button" class="task-action-btn" data-log-obs="${t.issue.number}" title="Record a night of data taken for this trigger">✎ Log observation</button></span>`
+            : ''
+        }
       </span>
-      ${
-        t.type === 'trigger' && t.data
-          ? `<button type="button" class="log-obs-btn" data-log-obs="${t.issue.number}" title="Record a night of data taken for this trigger">✎ Log obs</button>`
-          : ''
-      }
       <span class="task-people">${people || '<span class="avatar empty" title="No assignee — assign someone on GitHub">?</span>'}</span>
       <a class="task-num" href="${t.issue.html_url}" target="_blank" rel="noreferrer" title="${escapeHtml(t.issue.title)}">#${t.issue.number}↗</a>
       ${move}

@@ -200,12 +200,12 @@ details.purpose summary { cursor: pointer; width: fit-content; }
 /* Compact one-line tasks (track cards and every task list on the candidate page). */
 ul.task-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
 .task-line {
-  display: flex; align-items: center; gap: 0.5rem;
+  display: flex; align-items: flex-start; gap: 0.5rem; /* top-aligned: dot, assignees and link line up with the task's first line */
   padding: 0.3rem 0.45rem; border-radius: 6px; font-size: 0.9rem;
 }
 .task-line:hover { background: var(--bg); }
 .task-line.state-closed { opacity: 0.55; }
-.task-dot { flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--green); }
+.task-dot { flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--green); margin-top: 0.4rem; }
 .task-line.state-closed .task-dot { background: var(--gray); }
 .task-line.state-overdue .task-dot { background: var(--amber); }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -227,18 +227,19 @@ ul.task-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-dir
 .other-phases .image-group:first-of-type { margin-top: 0.3rem; }
 .avatar.empty { border-style: dashed; border-color: var(--amber); color: var(--amber); background: var(--panel); }
 .track-card p.muted { font-size: 0.9rem; }
-.task-num { flex: none; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
+.task-num { flex: none; margin-top: 0.25rem; font-size: 0.85rem; text-decoration: none; white-space: nowrap; }
 .task-num:hover { text-decoration: underline; }
-.task-move { flex: none; white-space: nowrap; }
+.task-move { flex: none; white-space: nowrap; align-self: center; }
 .task-move select { display: inline-block; width: auto; padding: 0.15rem 0.3rem; font-size: 0.8rem; margin: 0; }
-/* "Log obs" acts on one task, so it looks like a quiet chip on the line — unlike the blue "+ Add task" buttons, which create tasks. */
-button.log-obs-btn {
-  flex: none; white-space: nowrap; cursor: pointer;
-  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 999px;
-  padding: 0.15rem 0.55rem; font-size: 0.75rem; font-weight: 600;
+/* Per-task actions (e.g. "Log observation") sit on their own line inside the task:
+   blue like every action, but a light chip — the outlined "+ Add …" buttons create tasks. */
+.task-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; }
+button.task-action-btn {
+  cursor: pointer; white-space: nowrap;
+  background: #e8f0fb; color: var(--link); border: none; border-radius: 999px;
+  padding: 0.15rem 0.6rem; font-size: 0.78rem; font-weight: 600;
 }
-button.log-obs-btn:hover { border-color: var(--green); color: var(--green); background: var(--panel); }
-button.log-obs-btn[aria-expanded="true"] { border-color: var(--green); color: var(--green); background: var(--panel); }
+button.task-action-btn:hover, button.task-action-btn[aria-expanded="true"] { background: #cfe0f7; }
 table.obs-log td { font-size: 0.85rem; }
 table.obs-log td:first-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
 li.log-obs-row { padding: 0.3rem 0.45rem 0.5rem 1.55rem; }
