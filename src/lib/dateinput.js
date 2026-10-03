@@ -22,7 +22,7 @@ export function dateInputHtml(name, value = '', attrs = {}) {
 }
 
 /**
- * HTML for a UTC date + time field ("yyyy-mm-dd hh:mm"), for an observation's
+ * HTML for a UTC date + time field ("yyyy-mm-dd hh:mm"), for a logged observation's
  * time. Read it back with `utcDateTimeValue`.
  */
 export function utcDateTimeInputHtml(name) {

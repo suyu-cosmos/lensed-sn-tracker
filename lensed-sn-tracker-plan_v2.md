@@ -161,12 +161,12 @@ Every unit of work is a sub-issue of the candidate's parent issue. Task types an
 
 | `type:` label | Meaning | YAML fields in body |
 |---|---|---|
-| `type:trigger` | Request/schedule an observation | `facility`, `instrument`, `mode`, `requested_date`, `exposure`, `images: [A,B]`, `pi_contacted: bool`, `scheduled_utc` |
-| `type:observation` | An observation that was taken | `facility`, `instrument`, `obs_utc`, `filters/setup`, `conditions`, `data_location`, `reduction_status: raw|reduced|published` |
+| `type:trigger` | **Trigger observation**: data we request from one of our facilities, and the record of what was taken | `facility`, `instrument`, `mode`, `requested_date`, `exposure`, `images: [A,B]`, `pi_contacted: bool`, `scheduled_utc`, `observations: [{obs_utc, setup, conditions, data_location, reduction_status}]` (Milestone 2.6) |
+| `type:archival` | **Archival observations**: data we did not request (surveys, archives, other groups) — Milestone 2.6 | `source` (free text, e.g. LSST), `instrument` (free text: instrument / bands), `date_start`, `date_end`, `data_location`, `reduction_status: raw|reduced|published` |
 | `type:analysis` | Photometry, classification, lens model | `product` (`lightcurve`, `spectrum_classification`, `lens_model`, `time_delay`), `result` (free text), `files` |
 | `type:decision` | A choice the main lead / team must make | `deadline`, `options` |
 
-Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee is the person in charge of that step. A closed sub-issue is a done step. A trigger sub-issue is normally converted into (or linked to) an observation sub-issue once data are taken.
+Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee is the person in charge of that step. A closed sub-issue is a done step. (Until Milestone 2.6 a separate `type:observation` recorded data taken; it was folded into the trigger's own `observations` list — see §8 Milestone 2.6.)
 
 **Added in Milestone 2.5 (all optional, all task types unless noted):**
 
@@ -176,13 +176,13 @@ Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee i
 | `image` | For tasks in a `per_image` track: which trailing image this task targets (e.g. `B`). |
 | `role` | Role responsible (e.g. `photometry_lead`); defaults from the track. The assignee is resolved from it via §4.1, and `alerts.deputy_escalation_h` uses `people.roles[role].deputy`. |
 | `cadence_days`, `until` | Trigger only: a recurring monitoring campaign is **one** trigger issue with a cadence, not one issue per epoch. `cadence_days: null` = one-off. |
-| `epochs` | Observation only: list of `{obs_utc, filters/setup, conditions}` appended per epoch of a campaign, so one observation issue logs a whole cadence. |
+| `observations` | Trigger only (Milestone 2.6, replacing the former observation type's `epochs`): one entry per night of data taken, appended from the app's "+ Log observation", so one trigger issue records a whole campaign. |
 
 `exposure` stays in the schema but is not collected by the app's form; it is left for the PI / trigger coordinator.
 
 ### 5.3 Label set (created by a setup script)
 
-- `type:candidate`, `type:trigger`, `type:observation`, `type:analysis`, `type:decision`
+- `type:candidate`, `type:trigger`, `type:archival`, `type:analysis`, `type:decision` (`type:observation` retired in Milestone 2.6)
 - `status:*` — one per status in `rules.yaml`
 - `priority:high|medium|low`
 - `facility:<id>` — one per facility
@@ -191,7 +191,7 @@ Labels also carry `cand:<id>` and `facility:<id>` where relevant. The assignee i
 
 ### 5.4 Issue templates (`.github/ISSUE_TEMPLATE/`)
 
-`candidate.yml`, `trigger.yml`, `observation.yml`, `analysis.yml` as GitHub issue forms, with fields that render into the YAML blocks above. The web app writes the same format, so issues created on GitHub and in the app are interchangeable.
+`candidate.yml`, `trigger.yml`, `archival.yml`, `analysis.yml` as GitHub issue forms, with fields that render into the YAML blocks above. The web app writes the same format, so issues created on GitHub and in the app are interchangeable.
 
 ### 5.5 Discussion
 
@@ -566,8 +566,59 @@ only instrument; add it for B only; set every image `faded` → post-fade hint �
 `post_fade` → one Lens follow-up card; → `data_complete` hides the row from the dashboard.
 
 **Explicitly deferred:** alert automation (Milestone 3); `tasks_template` auto-creation;
-per-epoch append UI (edit `epochs` on GitHub for now); light-curve panel; analysis tracking
-(Milestone 4).
+per-epoch append UI (→ Milestone 2.6's "+ Log observation"); light-curve panel; analysis
+tracking (Milestone 4).
+
+### Milestone 2.6 — observing records: trigger observations + archival observations [done]
+
+**Why.** The original split (trigger = request, observation = data taken, §5.2) doesn't match
+how the group works: one trigger yields one or many nights of data (a recurring campaign is a
+single trigger issue), so a separate observation issue per night would be busywork linked to
+its trigger by hand. But data we did *not* request (survey photometry such as LSST/ZTF/Euclid,
+archives, other groups) is genuinely different: no PI to contact, and its source is not one of
+our `facilities.yaml` resources. Decided with the user (2026-10-03):
+
+- **Trigger observation** (`type:trigger`, shown as "Trigger observation"): facility/instrument
+  from `facilities.yaml`; request fields as before; assignees = PI + track role holder. It also
+  carries the **record of what was taken**: `observations:` list, one entry per night
+  (`obs_utc`, `setup`, `conditions`, `data_location`, `reduction_status`), appended with a
+  "+ Log observation" button on the task line.
+- **Archival observations** (`type:archival`, new): `source` free text with suggestions from a
+  `rules.yaml` vocabulary (`archival_sources`), `instrument` free text (instrument / bands),
+  `date_start`/`date_end` (data coverage), `data_location`, `reduction_status`. Assignee = the
+  track role holder only (no PI). Can be filed in any track (e.g. LSST light curves inside
+  Photometric monitoring); the task line then shows an "archival" tag (type ≠ track `task_type`).
+- **`type:observation` is retired**: template, Add-task section and builder removed. No live
+  observation issues existed, so there's no migration.
+
+**Steps.**
+1. **Data model** [done] — `buildTaskIssue` gains `archival`; triggers get `observations: []`;
+   `observation` removed from `TASK_TYPES`; display names in one place (`TASK_TYPE_LABELS`).
+   New `appendTriggerObservation(client, repo, task, entry)` in write.js: fetch fresh, append to
+   `observations`, write, return the updated task (render from it, no refetch).
+2. **Add-task form** [done] — type select shows "Trigger observation" / "Archival observations" /
+   analysis / decision; a track pre-selects its `task_type` but archival can be chosen instead;
+   archival fieldset (source with `<datalist>`, instrument, date range, data location, reduction
+   status). The observation fieldset and its facility cascade go away.
+3. **Task lines + logging** [done] — trigger lines show "N nights observed · last yyyy-mm-dd" and a
+   "+ Log observation" button opening a small inline form; archival lines show
+   "source · instrument" and the date range.
+4. **Observation log section** [done] — one table of every logged trigger night plus every archival
+   task: date(s), facility/source, instrument, setup, conditions, data location, reduction,
+   task link.
+5. **Data repo** [done] — `archival.yml` issue template; `trigger.yml` gains `observations: []`;
+   `observation.yml` deleted; `setup-labels.js` type list → archival instead of observation
+   (and the `type:observation` label deleted); `rules.yaml` `vocabularies.archival_sources`.
+6. **Docs + tests** [done] — §5.2 table (done with this section), both CLAUDE.md files, unit tests
+   for the builders/append, a DOM test for logging an observation.
+
+Also: a trigger with logged nights is never shown as overdue (data is arriving; a campaign
+stays open by design).
+
+**Acceptance check.** On a test candidate: add a GROND trigger, log two nights on it → the
+track card shows "2 nights observed" and the Observation log lists both; add "Archival
+observations" from LSST into Photometric monitoring → it shows with an "archival" tag, assigned
+to the photometry lead only, and appears in the Observation log.
 
 ### Milestone 4 — analysis tracking (after data gathering works)
 - Analysis tracks (time delays, lens modelling, SN properties, lens environment / external

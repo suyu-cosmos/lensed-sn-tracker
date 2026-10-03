@@ -217,7 +217,8 @@ order: header + Change-status (with the all-images-faded → post_fade *hint*),
 Visibility, Suggested next steps, **Image timeline** (edits `image_dates` and
 predicted arrivals via `updateCandidateFields`), **Follow-up tracks** (one card per track of the
 current phase + "Other tasks"; phases without tracks fall back to a flat task
-table), Add-task (Track selector first), Observation log, Discussion. Every
+table), Add-task (Track selector first), Observation log (every night logged on
+a trigger + every archival data set), Discussion. Every
 handler re-renders from data it already holds — the image-timeline save uses
 `updateCandidateFields`' return value, add-task merges the created issue —
 never from an immediate refetch. `wireFacilityCascade` takes an options object
@@ -243,6 +244,15 @@ fractional); "Predicted arrival" is read-only `dateFromDelay(arrivalAnchor, dela
 — anchor = reference image's detected date, else discovery_date — recomputed
 live as you type. `time_delays` is written with `replace` so a cleared entry
 is removed.
+
+**Task types (plan §8 Milestone 2.6):** `trigger` ("Trigger observation" —
+facilities.yaml facility, PI + role assignees, and an `observations:` list of
+nights taken, appended by "+ Log observation" via `appendTriggerObservation`),
+`archival` ("Archival observations" — free-text `source` with suggestions from
+`rules.vocabularies.archival_sources`, data date range, role assignee only),
+`analysis`, `decision`. Display names live in `TASK_TYPE_LABELS` (write.js);
+the ids are also the `type:<id>` labels. The old `observation` type is gone —
+don't reintroduce it. A trigger with logged nights is never "overdue".
 
 **Track helpers live in `src/lib/rules.js`** (`tracksForStatus`, `trackState`,
 `eligibleImages`, `trackInstruments`, `predictedArrivals`) — pages must use

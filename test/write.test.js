@@ -14,6 +14,7 @@ import {
   updateCandidateFields,
   setTaskTrack,
   issueStateFor,
+  appendTriggerObservation,
 } from '../src/lib/write.js';
 import { parseIssueBody, stringifyIssueBody } from '../src/lib/yaml.js';
 
@@ -175,19 +176,19 @@ describe('buildTaskIssue', () => {
     expect(data.filter).toBe('R');
   });
 
-  it('builds an observation sub-issue preserving the filters/setup key', () => {
-    const { body } = buildTaskIssue('LSN-test', 'observation', {
-      facility: 'keck',
-      instrument: 'lris',
-      obsUtc: '2026-09-20T05:00:00Z',
-      filtersSetup: 'slit 1.0"',
-      conditions: 'clear',
-      dataLocation: '/data',
-      reductionStatus: 'raw',
+  it('builds an archival sub-issue: free-text source, no facility label, data date range', () => {
+    const { title, body, labels } = buildTaskIssue('LSN-test', 'archival', {
+      source: 'LSST',
+      instrument: 'ugrizy',
+      dateStart: '2026-09-01',
+      dateEnd: '2026-10-01',
+      dataLocation: 'https://example.org/lsst',
+      reductionStatus: 'reduced',
     });
     const { data } = parseIssueBody(body);
-    expect(data['filters/setup']).toBe('slit 1.0"');
-    expect(data.reduction_status).toBe('raw');
+    expect(title).toBe('[LSN-test] archival: LSST ugrizy');
+    expect(data).toMatchObject({ source: 'LSST', instrument: 'ugrizy', date_start: '2026-09-01', date_end: '2026-10-01', reduction_status: 'reduced' });
+    expect(labels).toEqual(['type:archival', 'cand:LSN-test']);
   });
 
   it('builds an analysis sub-issue with no facility label', () => {
@@ -349,8 +350,9 @@ describe('Milestone 2.5 track fields', () => {
       candidate: { roles_override: { photometry_lead: 'musepi' } },
     });
     expect(same.assignees).toEqual(['musepi']);
-    const obs = buildTaskIssue('X', 'observation', { track: 'phot_monitoring', facility: 'vlt', instrument: 'muse' }, ctx);
-    expect(obs.assignees).toEqual(['stefant']);
+    // Archival data has no PI: only the track's role holder.
+    const archival = buildTaskIssue('X', 'archival', { track: 'phot_monitoring', source: 'LSST' }, ctx);
+    expect(archival.assignees).toEqual(['stefant']);
   });
 
   it('untracked tasks still work with no context (backward compatible)', () => {
@@ -360,9 +362,25 @@ describe('Milestone 2.5 track fields', () => {
     expect(parseIssueBody(body).data.track).toBeNull();
   });
 
-  it('observations carry an epochs list', () => {
-    const { body } = buildTaskIssue('X', 'observation', { facility: 'ntt', instrument: 'soxs' });
-    expect(parseIssueBody(body).data.epochs).toEqual([]);
+  it('triggers start with an empty observations record', () => {
+    const { body } = buildTaskIssue('X', 'trigger', { facility: 'ntt', instrument: 'soxs', mode: 'spectroscopy', images: [] });
+    expect(parseIssueBody(body).data.observations).toEqual([]);
+  });
+
+  it('appendTriggerObservation appends one night to the fresh issue and returns the updated task', async () => {
+    const repo = { owner: 'o', name: 'r' };
+    const stored = { cand: 'X', facility: 'mpg22', instrument: 'grond', observations: [{ obs_utc: '2026-10-01T03:00:00Z' }] };
+    const issues = {
+      get: vi.fn(async () => ({ data: { body: stringifyIssueBody(stored, 'PI says ok', 'trigger') } })),
+      update: vi.fn(async () => ({})),
+    };
+    const task = { type: 'trigger', issue: { number: 7 }, data: { cand: 'X', observations: [] } }; // stale copy
+    const updated = await appendTriggerObservation({ rest: { issues } }, repo, task, { obs_utc: '2026-10-02T03:30:00Z', setup: 'g,r,i' });
+    expect(updated.data.observations).toHaveLength(2); // appended to the *fresh* list, not the stale one
+    expect(updated.data.observations[1]).toEqual({ obs_utc: '2026-10-02T03:30:00Z', setup: 'g,r,i', conditions: null, data_location: '', reduction_status: 'raw' });
+    const written = parseIssueBody(issues.update.mock.calls[0][0].body);
+    expect(written.data.observations).toHaveLength(2);
+    expect(written.notes).toContain('PI says ok');
   });
 });
 

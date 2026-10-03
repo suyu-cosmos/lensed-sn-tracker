@@ -20,11 +20,15 @@ GitHub issues there. See `lensed-sn-tracker-plan_v2.md` for the full design.
 
 - **+ New candidate** page: creates the parent issue (YAML block +
   `type:candidate`/`status:*`/`cand:<id>` labels) directly via the API.
-- **Add task** (on the candidate page): creates a trigger/observation/
-  analysis/decision sub-issue with `cand:`/`facility:` labels set.
-- **Trigger** (add-task with type `trigger`): also surfaces a pre-filled
-  `mailto:` link to the facility's PI contact with coordinates, a finder
-  chart, and tonight's visibility window at that facility.
+- **Add task** (on the candidate page): creates a Trigger observation /
+  Archival observations / analysis / decision sub-issue with `cand:`/
+  `facility:`/`track:` labels set.
+- **Trigger observation** (type `trigger`): data requested from one of our
+  facilities. Also surfaces a pre-filled `mailto:` link to the PI with
+  coordinates, a finder chart, and tonight's visibility window; nights of
+  data taken are recorded on the same issue with **+ Log observation**.
+- **Archival observations** (type `archival`): data we didn't request
+  (surveys, archives, other groups) — free-text source, data date range.
 - **Change status**: updates the candidate's YAML `status:` field *and*
   swaps its `status:*` label to match, closing the drift the two could get
   into if only one were updated by hand.

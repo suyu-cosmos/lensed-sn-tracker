@@ -25,7 +25,15 @@ const LEAD_ROLE_BY_MODE = {
 
 export const SN_TYPES = ['unknown', 'Ia', 'II', 'Ibc', 'SLSN', 'other'];
 export const LENS_TYPES = ['galaxy', 'group', 'cluster'];
-export const TASK_TYPES = ['trigger', 'observation', 'analysis', 'decision'];
+export const TASK_TYPES = ['trigger', 'archival', 'analysis', 'decision'];
+// How each task type is named in the app (plan §8 Milestone 2.6). The ids stay
+// short because they're also the `type:<id>` labels on GitHub.
+export const TASK_TYPE_LABELS = {
+  trigger: 'Trigger observation',
+  archival: 'Archival observations',
+  analysis: 'Analysis',
+  decision: 'Decision',
+};
 export const REDUCTION_STATUSES = ['raw', 'reduced', 'published'];
 export const ANALYSIS_PRODUCTS = ['lightcurve', 'spectrum_classification', 'lens_model', 'time_delay'];
 // Allowed instrument modes (plan §3); falls back to this list when an
@@ -90,7 +98,7 @@ export function buildCandidateIssue(fields) {
  * Track fields (plan §5.2 / §6.2), all optional so untracked tasks still work:
  * `fields.track` (a rules.yaml track id; also added as label `track:<id>`),
  * `fields.image` (per-image tracks), `fields.role` (defaults from the track),
- * plus `cadence_days`/`until` on triggers and `epochs` on observations.
+ * plus `cadence_days`/`until` and the `observations` record on triggers.
  *
  * `context` ({ rules, candidate, peopleData, facilities }) is optional: when
  * given, the role defaults from the track and the assignee is resolved from
@@ -127,23 +135,24 @@ export function buildTaskIssue(candidateId, type, fields, context = {}) {
         images: fields.images,
         pi_contacted: false,
         scheduled_utc: null,
+        observations: [], // one entry per night of data taken — appendTriggerObservation (plan §8 M2.6)
       };
       titleSuffix = `trigger: ${fields.facility}/${fields.instrument}`;
       break;
-    case 'observation':
+    case 'archival':
+      // Data we didn't request (surveys, archives, other groups): the source is
+      // free text, not a facilities.yaml id, and there's no PI to involve.
       data = {
         cand: candidateId,
         ...trackFields,
-        facility: fields.facility,
-        instrument: fields.instrument,
-        obs_utc: fields.obsUtc || null,
-        'filters/setup': fields.filtersSetup || null,
-        conditions: fields.conditions || null,
+        source: fields.source,
+        instrument: fields.instrument || null, // free text: instrument and/or bands
+        date_start: fields.dateStart || null, // the data's time coverage
+        date_end: fields.dateEnd || null,
         data_location: fields.dataLocation || '',
         reduction_status: fields.reductionStatus || 'raw',
-        epochs: fields.epochs ?? [], // recurring campaigns append { obs_utc, filters/setup, conditions } per epoch
       };
-      titleSuffix = `observation: ${fields.facility}/${fields.instrument}`;
+      titleSuffix = `archival: ${fields.source}${fields.instrument ? ` ${fields.instrument}` : ''}`;
       break;
     case 'analysis':
       data = {
@@ -390,4 +399,27 @@ export async function setTaskTrack(client, dataRepo, task, trackId, rules, image
 
   const labels = [...labelNames.filter((n) => !n.startsWith('track:')), newLabel].map((name) => ({ name }));
   return { ...task, issue: { ...task.issue, labels }, data: nextData, notes };
+}
+
+/**
+ * Log one night of data on a trigger (plan §8 Milestone 2.6): fetch the issue
+ * fresh, append `entry` ({ obs_utc, setup, conditions, data_location,
+ * reduction_status }) to its `observations` list, save, and return the
+ * updated task entry for the caller to render directly (no refetch).
+ */
+export async function appendTriggerObservation(client, dataRepo, task, entry) {
+  const fresh = await getIssue(client, dataRepo, task.issue.number);
+  const { data, notes } = parseIssueBody(fresh.body);
+  if (!data) throw new Error("Could not parse this issue's YAML block; refusing to overwrite it.");
+  const clean = {
+    obs_utc: entry.obs_utc || null,
+    setup: entry.setup || null,
+    conditions: entry.conditions || null,
+    data_location: entry.data_location || '',
+    reduction_status: entry.reduction_status || 'raw',
+  };
+  const nextData = { ...data, observations: [...(Array.isArray(data.observations) ? data.observations : []), clean] };
+  const body = stringifyIssueBody(nextData, notes, task.type);
+  await updateIssueBody(client, dataRepo, task.issue.number, body);
+  return { ...task, issue: { ...task.issue, body }, data: nextData, notes };
 }

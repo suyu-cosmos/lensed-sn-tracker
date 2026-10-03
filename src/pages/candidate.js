@@ -43,7 +43,9 @@ import {
   updateCandidateFields,
   setTaskTrack,
   TASK_TYPES,
+  TASK_TYPE_LABELS,
   REDUCTION_STATUSES,
+  appendTriggerObservation,
   ANALYSIS_PRODUCTS,
   INSTRUMENT_MODES,
 } from '../lib/write.js';
@@ -185,13 +187,14 @@ function initials(name) {
 /** What the task *is*, without the "[cand-id] type:" / "(image X)" boilerplate the title carries. */
 function taskWhat(t, facilities) {
   const d = t.data ?? {};
+  if (t.type === 'archival') return `${d.source ?? '?'}${d.instrument ? ` · ${d.instrument}` : ''}`;
   if (d.facility || d.instrument) {
     const facility = facilityById(facilities, d.facility);
     const instrument = facility?.instruments?.find((i) => i.id === d.instrument);
     const band = d.filter ? ` (${d.filter})` : '';
     return `${instrument?.name ?? d.instrument ?? '?'}${band} · ${facility?.short ?? (d.facility ?? '?').toUpperCase()}`;
   }
-  return t.issue.title.replace(/^\[[^\]]*\]\s*/, '').replace(/^(trigger|observation|analysis|decision):\s*/, '').replace(/\s*\(image [^)]*\)$/, '');
+  return t.issue.title.replace(/^\[[^\]]*\]\s*/, '').replace(/^(trigger|archival|analysis|decision):\s*/, '').replace(/\s*\(image [^)]*\)$/, '');
 }
 
 /** The one date that matters for this task, plus a recurring campaign's cadence. */
@@ -201,18 +204,28 @@ function taskWhen(t) {
   if (d.cadence_days) parts.push(`every ${d.cadence_days} d${d.until ? ` until ${d.until}` : ''}`);
   if (d.requested_date) parts.push(`req. ${d.requested_date}`);
   else if (d.deadline) parts.push(`due ${d.deadline}`);
-  else if (d.obs_utc) parts.push(`obs. ${String(d.obs_utc).slice(0, 10)}`);
-  if (Array.isArray(d.epochs) && d.epochs.length) parts.push(`${d.epochs.length} epoch${d.epochs.length === 1 ? '' : 's'}`);
+  if (t.type === 'archival' && (d.date_start || d.date_end)) parts.push(`data ${d.date_start ?? '…'} – ${d.date_end ?? '…'}`);
+  const nights = triggerObservations(t);
+  if (nights.length) {
+    const last = nights.map((o) => String(o.obs_utc ?? '').slice(0, 10)).filter(Boolean).sort().pop();
+    parts.push(`${nights.length} night${nights.length === 1 ? '' : 's'} observed${last ? ` · last ${last}` : ''}`);
+  }
   return parts.join(' · ');
 }
 
-/** open / closed / overdue (open, and its requested date or deadline has passed). */
+/** A trigger's logged nights of data (plan §8 Milestone 2.6); [] for anything else. */
+function triggerObservations(t) {
+  return t.type === 'trigger' && Array.isArray(t.data?.observations) ? t.data.observations : [];
+}
+
+/** open / closed / overdue (open, its requested date or deadline has passed, and — for a trigger — no data logged yet). */
 function taskLineState(t) {
   if (t.issue.state !== 'open') return 'closed';
+  if (triggerObservations(t).length) return 'open'; // data is arriving; a campaign stays open by design
   const due = taskDueDate(t);
   return due && String(due).slice(0, 10) < todayUtc() ? 'overdue' : 'open';
 }
-const TASK_STATE_TITLE = { open: 'open', closed: 'closed', overdue: 'open — its requested date / deadline has passed' };
+const TASK_STATE_TITLE = { open: 'open', closed: 'closed', overdue: 'open — its requested date / deadline has passed with no data logged' };
 
 /**
  * One task as a single compact line: state dot, what (instrument · facility),
@@ -225,7 +238,7 @@ function renderTaskLine(t, ctx, opts = {}) {
   const state = taskLineState(t);
   const when = taskWhen(t);
   const trackLabel = opts.track && t.data?.track ? ctx.rules.tracks?.find((tr) => tr.id === t.data.track)?.label ?? t.data.track : '';
-  // Show the type only when it's not what the task's track normally holds (e.g. an observation in a trigger track).
+  // Show the type only when it's not what the task's track normally holds (e.g. archival data in a trigger track).
   const usualType = opts.typeUnless ?? ctx.rules.tracks?.find((tr) => tr.id === t.data?.track)?.task_type;
   const typeTag = t.type !== usualType ? `<span class="task-type">${escapeHtml(t.type)}</span>` : '';
   const people = (t.issue.assignees ?? [])
@@ -251,7 +264,15 @@ function renderTaskLine(t, ctx, opts = {}) {
       <span class="task-dot" title="${TASK_STATE_TITLE[state]}"></span>
       <span class="task-main">
         <span class="task-what">${typeTag}${escapeHtml(taskWhat(t, ctx.facilities))}${t.data?.image && opts.image ? ` <span class="muted">· image ${escapeHtml(t.data.image)}</span>` : ''}</span>
-        ${when || trackLabel ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}</span>` : ''}
+        ${
+          when || trackLabel || t.type === 'trigger'
+            ? `<span class="task-when">${escapeHtml([trackLabel, when].filter(Boolean).join(' · '))}${
+                t.type === 'trigger' && t.data
+                  ? `${when || trackLabel ? ' · ' : ''}<button type="button" class="linklike" data-log-obs="${t.issue.number}" title="Record a night of data taken for this trigger">+ Log observation</button>`
+                  : ''
+              }</span>`
+            : ''
+        }
       </span>
       <span class="task-people">${people || '<span class="avatar empty" title="No assignee — assign someone on GitHub">?</span>'}</span>
       <a class="task-num" href="${t.issue.html_url}" target="_blank" rel="noreferrer" title="${escapeHtml(t.issue.title)}">#${t.issue.number}↗</a>
@@ -486,21 +507,38 @@ function renderTrackSection(ctx, data, tasks) {
     }`;
 }
 
-function renderObservationLog(tasks) {
-  const observations = tasks.filter((t) => t.type === 'observation');
-  if (!observations.length) return '<p class="muted">No observations logged yet.</p>';
-  const rows = observations
-    .map(
-      (t) => `
-      <tr>
-        <td>${escapeHtml(t.data?.facility ?? '—')}</td>
-        <td>${escapeHtml(t.data?.instrument ?? '—')}</td>
-        <td>${escapeHtml(t.data?.obs_utc ?? '—')}</td>
-        <td>${escapeHtml(t.data?.reduction_status ?? '—')}</td>
-      </tr>`,
-    )
-    .join('');
-  return `<table><thead><tr><th>Facility</th><th>Instrument</th><th>Obs. UTC</th><th>Reduction</th></tr></thead><tbody>${rows}</tbody></table>`;
+/**
+ * Every night logged on a trigger plus every archival data set, newest first
+ * (plan §8 Milestone 2.6) — the candidate's data inventory in one table.
+ */
+function renderObservationLog(tasks, ctx) {
+  const link = (t) => `<a href="${t.issue.html_url}" target="_blank" rel="noreferrer">#${t.issue.number}</a>`;
+  const location = (loc) =>
+    !loc ? '—' : /^https?:\/\//.test(loc) ? `<a href="${escapeHtml(loc)}" target="_blank" rel="noreferrer">${escapeHtml(loc)}</a>` : escapeHtml(loc);
+  const rows = [];
+  for (const t of tasks) {
+    if (t.type === 'trigger') {
+      const facility = facilityById(ctx.facilities, t.data?.facility);
+      const instrument = facility?.instruments?.find((i) => i.id === t.data?.instrument);
+      for (const o of triggerObservations(t)) {
+        const when = String(o.obs_utc ?? '').replace('T', ' ').replace(/:00Z$|Z$/, '');
+        rows.push({
+          sort: String(o.obs_utc ?? ''),
+          cells: [when || '—', escapeHtml(facility?.short ?? t.data?.facility ?? '—'), escapeHtml(instrument?.name ?? t.data?.instrument ?? '—'), escapeHtml(o.setup ?? '—'), escapeHtml(o.conditions ?? '—'), location(o.data_location), escapeHtml(o.reduction_status ?? '—'), link(t)],
+        });
+      }
+    } else if (t.type === 'archival') {
+      const d = t.data ?? {};
+      rows.push({
+        sort: String(d.date_end ?? d.date_start ?? ''),
+        cells: [`${d.date_start ?? '…'} – ${d.date_end ?? '…'}`, `${escapeHtml(d.source ?? '—')} <span class="task-type">archival</span>`, escapeHtml(d.instrument ?? '—'), '—', '—', location(d.data_location), escapeHtml(d.reduction_status ?? '—'), link(t)],
+      });
+    }
+  }
+  if (!rows.length) return '<p class="muted">No observations logged yet — use "+ Log observation" on a trigger, or add Archival observations.</p>';
+  rows.sort((a, b) => b.sort.localeCompare(a.sort));
+  const body = rows.map((r) => `<tr>${r.cells.map((c, i) => `<td>${i === 0 ? escapeHtml(c) : c}</td>`).join('')}</tr>`).join('');
+  return `<div class="table-scroll"><table class="obs-log"><thead><tr><th>Date (UTC)</th><th>Facility / source</th><th>Instrument</th><th>Setup</th><th>Conditions</th><th>Data location</th><th>Reduction</th><th>Task</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderComments(comments) {
@@ -567,7 +605,9 @@ function renderChangeStatus(rules, currentStatusId, data, tasks = []) {
     </div>`;
 }
 
-function renderAddTask(facilities, tracks) {
+function renderAddTask(facilities, tracks, rules) {
+  // Suggestions only — any source can be typed (rules.yaml vocabularies.archival_sources).
+  const sources = (rules?.vocabularies?.archival_sources ?? []).map((v) => (typeof v === 'string' ? v : v.label ?? v.id));
   const facilityOptions = optionEls(
     facilities.map((f) => f.id),
     facilities.map((f) => f.name),
@@ -592,7 +632,7 @@ function renderAddTask(facilities, tracks) {
       <form id="add-task-form">
         ${trackSelect}
         <label>Type
-          <select name="type">${optionEls(TASK_TYPES)}</select>
+          <select name="type">${optionEls(TASK_TYPES, TASK_TYPES.map((t) => TASK_TYPE_LABELS[t] ?? t))}</select>
         </label>
 
         <fieldset data-type="trigger">
@@ -606,14 +646,15 @@ function renderAddTask(facilities, tracks) {
           <label data-role="images-wrap">Images <input name="images" placeholder="A, B" /></label>
         </fieldset>
 
-        <fieldset data-type="observation" hidden>
-          <label>Facility <select name="facility2" data-role="facility">${facilityOptions}</select></label>
-          <label>Instrument <select name="instrument2" data-role="instrument"></select></label>
-          <label>Obs. UTC ${utcDateTimeInputHtml('obsUtc')}</label>
-          <label>Filters/setup <input name="filtersSetup" /></label>
-          <label>Conditions <input name="conditions" /></label>
-          <label>Data location <input name="dataLocation" /></label>
-          <label>Reduction status <select name="reductionStatus">${optionEls(REDUCTION_STATUSES)}</select></label>
+        <fieldset data-type="archival" hidden>
+          <p class="muted">Data we didn't request — survey, archive or another group's data. No PI involved; assigned to the track's lead.</p>
+          <label>Source * <input name="source" list="archival-sources" placeholder="e.g. LSST" autocomplete="off" /></label>
+          <datalist id="archival-sources">${sources.map((src) => `<option value="${escapeHtml(src)}"></option>`).join('')}</datalist>
+          <label>Instrument / bands <input name="archivalInstrument" placeholder="e.g. LSSTCam ugrizy" /></label>
+          <label>Data from ${dateInputHtml('dateStart')}</label>
+          <label>Data until ${dateInputHtml('dateEnd')}</label>
+          <label>Data location <input name="archivalLocation" placeholder="URL, archive id or path" /></label>
+          <label>Reduction status <select name="archivalReduction">${optionEls(REDUCTION_STATUSES)}</select></label>
         </fieldset>
 
         <fieldset data-type="analysis" hidden>
@@ -823,13 +864,6 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
     imagesWrap: form.querySelector('fieldset[data-type="trigger"] [data-role="images-wrap"]'),
     allowed: currentTrack,
   });
-  const observationCascade = wireFacilityCascade({
-    facilities,
-    facilitySelect: form.querySelector('fieldset[data-type="observation"] [data-role="facility"]'),
-    instrumentSelect: form.querySelector('fieldset[data-type="observation"] [data-role="instrument"]'),
-    allowed: currentTrack,
-  });
-
   function showType(type) {
     typeSelect.value = type;
     form.querySelectorAll('fieldset[data-type]').forEach((fs) => {
@@ -839,6 +873,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
   typeSelect.addEventListener('change', () => {
     showType(typeSelect.value);
     mailtoEl.innerHTML = '';
+    updateHint();
   });
 
   // Choosing a track pre-fills type, cadence, the instrument choices and (via
@@ -848,7 +883,6 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
     if (track?.task_type) showType(track.task_type);
     if (cadenceInput) cadenceInput.value = track?.default_cadence_days ?? '';
     triggerCascade.refresh();
-    observationCascade.refresh();
 
     if (imageWrap) {
       const eligible = track?.per_image ? eligibleImages(track, candidate.data, tasks) : [];
@@ -861,6 +895,12 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
         : '<option value="">no trailing image detected yet</option>';
       if (preselectImage) imageSelect.value = preselectImage;
     }
+    updateHint();
+  }
+
+  // Who the task will be assigned to — depends on the track (its role) and the type (triggers add the PI).
+  function updateHint() {
+    const track = currentTrack();
     if (trackHint) {
       if (!track?.role) {
         trackHint.textContent = !trackSelect.value
@@ -872,7 +912,7 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
         const { personId } = resolveRole(candidate.data, track.role, ctx.people);
         const name = personId ? findPerson(ctx.people, personId)?.name ?? personId : 'nobody (role unassigned)';
         trackHint.textContent =
-          track.task_type === 'trigger'
+          typeSelect.value === 'trigger'
             ? `Will be assigned to the chosen facility's PI and ${name} (${track.role}).`
             : `Will be assigned to ${name} (${track.role}).`;
       }
@@ -925,15 +965,14 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
             until: values.until || null,
             images: (values.images ?? '').split(',').map((s) => s.trim()).filter(Boolean),
           }
-        : type === 'observation'
+        : type === 'archival'
           ? {
-              facility: values.facility2,
-              instrument: values.instrument2,
-              obsUtc: utcDateTimeValue(values.obsUtc),
-              filtersSetup: values.filtersSetup,
-              conditions: values.conditions,
-              dataLocation: values.dataLocation,
-              reductionStatus: values.reductionStatus,
+              source: (values.source ?? '').trim(),
+              instrument: (values.archivalInstrument ?? '').trim(),
+              dateStart: values.dateStart || null,
+              dateEnd: values.dateEnd || null,
+              dataLocation: (values.archivalLocation ?? '').trim(),
+              reductionStatus: values.archivalReduction,
             }
           : type === 'analysis'
             ? {
@@ -946,6 +985,10 @@ function wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments)
                 deadline: values.deadline,
                 options: values.options.split(',').map((s) => s.trim()).filter(Boolean),
               };
+    if (type === 'archival' && !typeFields.source) {
+      errorEl.textContent = 'Say where the archival data comes from (Source), e.g. LSST.';
+      return;
+    }
     const fields = { ...trackFields, ...typeFields };
     // A per-image trigger covers its target image unless told otherwise.
     if (type === 'trigger' && image && !fields.images.length) fields.images = [image];
@@ -1088,6 +1131,70 @@ function wireMoveToTrack(container, ctx, candidate, tasks, comments) {
         if (errorEl) errorEl.textContent = `Could not move #${number}: ${err.message}`;
         btn.disabled = false;
       }
+    });
+  });
+}
+
+/**
+ * "+ Log observation" on a trigger's task line opens a small form right under
+ * it; saving appends one night to the trigger's `observations` and re-renders
+ * from the write's own result (CLAUDE.md: no refetch).
+ */
+function wireLogObservation(container, ctx, candidate, tasks, comments) {
+  container.querySelectorAll('[data-log-obs]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const line = btn.closest('li.task-line');
+      const existing = line.nextElementSibling?.classList.contains('log-obs-row') ? line.nextElementSibling : null;
+      if (existing) {
+        existing.remove();
+        return;
+      }
+      const number = Number(btn.dataset.logObs);
+      const row = document.createElement('li');
+      row.className = 'log-obs-row';
+      row.innerHTML = `
+        <form class="log-obs-form">
+          <label>Obs. UTC * ${utcDateTimeInputHtml('obsUtc')}</label>
+          <label>Setup <input name="setup" placeholder="e.g. slit 1.0 arcsec, 4x600s / g,r,i" /></label>
+          <label>Conditions <input name="conditions" placeholder="e.g. clear, seeing 0.8 arcsec" /></label>
+          <label>Data location <input name="dataLocation" placeholder="URL, archive id or path" /></label>
+          <label>Reduction status <select name="reductionStatus">${optionEls(REDUCTION_STATUSES)}</select></label>
+          <div class="form-actions">
+            <button type="submit">Save observation</button>
+            <button type="button" class="linklike" data-cancel>Cancel</button>
+            <span class="error"></span>
+          </div>
+        </form>`;
+      line.after(row);
+      const form = row.querySelector('form');
+      const errorEl = form.querySelector('.error');
+      form.querySelector('[data-cancel]').addEventListener('click', () => row.remove());
+      form.querySelector('input[name="obsUtc"]').focus();
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const values = Object.fromEntries(new FormData(form).entries());
+        const obsUtc = utcDateTimeValue(values.obsUtc);
+        if (!obsUtc || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(obsUtc)) {
+          errorEl.textContent = 'Enter when the data was taken, as yyyy-mm-dd hh:mm (UTC).';
+          return;
+        }
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        try {
+          const task = tasks.find((t) => t.issue.number === number);
+          const updated = await appendTriggerObservation(ctx.client, ctx.config.dataRepo, task, {
+            obs_utc: obsUtc,
+            setup: values.setup.trim(),
+            conditions: values.conditions.trim(),
+            data_location: values.dataLocation.trim(),
+            reduction_status: values.reductionStatus,
+          });
+          renderCandidatePage(container, ctx, candidate, tasks.map((t) => (t.issue.number === number ? updated : t)), comments);
+        } catch (err) {
+          errorEl.textContent = `Could not save: ${err.message}`;
+          submitBtn.disabled = false;
+        }
+      });
     });
   });
 }
@@ -1289,10 +1396,10 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
     ${data ? renderImageTimeline(data) : ''}
 
     ${data ? renderTrackSection(ctx, data, tasks) : `<h2>Tasks</h2><div class="card">${renderTaskLines(tasks, ctx)}</div>`}
-    ${data ? renderAddTask(facilities, tracksForStatus(rules, data.status)) : ''}
+    ${data ? renderAddTask(facilities, tracksForStatus(rules, data.status), rules) : ''}
 
     <h2>Observation log</h2>
-    ${renderObservationLog(tasks)}
+    ${renderObservationLog(tasks, ctx)}
 
     <h2>Discussion</h2>
     ${renderComments(comments)}
@@ -1310,6 +1417,7 @@ function renderCandidatePage(container, ctx, candidate, tasks, comments) {
     wireRolesForm(container, ctx, candidate, tasks, comments);
     wireImageTimelineForm(container, ctx, candidate, tasks, comments);
     wireMoveToTrack(container, ctx, candidate, tasks, comments);
+    wireLogObservation(container, ctx, candidate, tasks, comments);
     wireAddTaskForm(container, ctx, candidate, facilities, tasks, comments);
   }
 }

@@ -45,7 +45,7 @@ export async function listCandidateIssues(client, { owner, name }) {
 }
 
 /**
- * List every sub-issue (trigger/observation/analysis/decision) belonging to
+ * List every sub-issue (trigger/archival/analysis/decision) belonging to
  * one candidate, identified by its `cand:<id>` label. Milestone 1 has no
  * native GitHub "sub-issue" link to rely on, so the `cand:<id>` label is the
  * relationship — the candidate.yml form and the app both set it.
